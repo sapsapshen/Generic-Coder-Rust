@@ -25,6 +25,9 @@ Thumbs.db
 .env
 auth.json
 model_responses.txt
+mykey.json
+target/
+.omc/
 
 # Sensitive files (API keys, credentials)
 mykey.py

@@ -1,0 +1,22 @@
+//! Generic Coder — Autonomous coding agent cockpit (Rust rewrite)
+//!
+//! Core modules:
+//! - `types` — Shared data structures
+//! - `config` — Configuration loading
+//! - `llm` — LLM backends (Claude / OpenAI-compatible)
+//! - `agent` — ReAct agent loop + tool dispatch
+//! - `tools` — Tool implementations
+//! - `workspace` — Workspace manager
+//! - `remote` — SSH remote manager
+//! - `media` — Media file handler
+//! - `web` — Web UI server (Axum)
+
+pub mod agent;
+pub mod config;
+pub mod llm;
+pub mod media;
+pub mod remote;
+pub mod tools;
+pub mod types;
+pub mod web;
+pub mod workspace;

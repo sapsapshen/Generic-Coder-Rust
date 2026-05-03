@@ -16,6 +16,72 @@
   --ok: #63f0a2;
   --shadow-xl: 0 32px 100px rgba(0, 0, 0, 0.45);
   --shadow-md: 0 14px 36px rgba(0, 0, 0, 0.28);
+  --field-bg: linear-gradient(180deg, rgba(42, 38, 36, 0.92), rgba(30, 34, 42, 0.94));
+  --field-bg-hover: linear-gradient(180deg, rgba(78, 58, 42, 0.9), rgba(44, 48, 58, 0.96));
+  --field-border: rgba(255, 145, 56, 0.45);
+  --field-text: #f8f4ed;
+  --field-muted: #ddd5cb;
+  --field-disabled-bg: linear-gradient(180deg, rgba(48, 48, 52, 0.8), rgba(34, 37, 44, 0.84));
+  --field-disabled-text: #d4ccc3;
+  --field-popup-bg: #161b23;
+  --field-popup-text: #f8f4ed;
+  --field-popup-selected-bg: #1f67d2;
+  --field-popup-selected-text: #ffffff;
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --toolbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  --toolbar-border: rgba(255, 255, 255, 0.08);
+  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(255, 137, 44, 0.24), rgba(255, 255, 255, 0.08));
+  --button-secondary-border: rgba(255, 145, 56, 0.34);
+  --button-secondary-text: var(--text-0);
+  --button-primary-bg: linear-gradient(180deg, #ff9838, #ff6d00);
+  --button-primary-hover-bg: linear-gradient(180deg, #ffab54, #ff7a00);
+  --button-primary-text: #1a1008;
+  --focus-ring: rgba(255, 122, 0, 0.16);
+  --control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --tree-bg: rgba(0, 0, 0, 0.16);
+  --tree-hover-bg: rgba(255, 255, 255, 0.06);
+  --status-bg: rgba(0, 0, 0, 0.18);
+  --status-border: rgba(255, 255, 255, 0.06);
+  --status-idle-dot: rgba(255, 255, 255, 0.25);
+  --status-idle-ring: rgba(255, 255, 255, 0.04);
+  --progress-panel-bg: rgba(255, 152, 56, 0.08);
+  --progress-panel-border: rgba(255, 152, 56, 0.16);
+  --progress-track-bg: rgba(255, 255, 255, 0.08);
+  --chip-bg: rgba(255, 255, 255, 0.05);
+  --chip-hover-bg: rgba(255, 137, 44, 0.18);
+  --chip-border: rgba(255, 255, 255, 0.08);
+  --card-assistant-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  --card-user-bg: linear-gradient(180deg, rgba(255, 148, 56, 0.3), rgba(255, 122, 0, 0.2));
+  --card-user-border: rgba(255, 152, 56, 0.42);
+  --code-bg: rgba(0, 0, 0, 0.36);
+  --code-border: rgba(255, 255, 255, 0.06);
+  --code-badge-bg: rgba(255, 255, 255, 0.08);
+  --syntax-keyword: #ff9d5c;
+  --syntax-comment: #6a9955;
+  --syntax-string: #6ecb8c;
+  --syntax-number: #b5cea8;
+  --syntax-tag: #ffd64d;
+  --badge-summary-bg: rgba(255, 152, 56, 0.18);
+  --badge-summary-border: rgba(255, 152, 56, 0.2);
+  --badge-summary-fg: var(--accent-1);
+  --badge-action-bg: rgba(255, 152, 56, 0.2);
+  --badge-action-fg: #ffb062;
+  --badge-status-bg: rgba(99, 240, 162, 0.15);
+  --badge-status-fg: #63f0a2;
+  --badge-error-bg: rgba(255, 107, 107, 0.18);
+  --badge-error-fg: #ff6b6b;
+  --badge-warn-bg: rgba(255, 214, 77, 0.18);
+  --badge-warn-fg: #ffd64d;
+  --badge-info-bg: rgba(150, 197, 255, 0.15);
+  --badge-info-fg: #8dc6ff;
+  --badge-backup-bg: rgba(200, 180, 255, 0.15);
+  --badge-backup-fg: #c8b4ff;
+  --dialog-backdrop: rgba(5, 8, 12, 0.72);
+  --diff-add-bg: rgba(99, 240, 162, 0.1);
+  --diff-add-fg: #63f0a2;
+  --diff-remove-bg: rgba(255, 107, 107, 0.1);
+  --diff-remove-fg: #ff6b6b;
   --shell-bg:
     radial-gradient(circle at 18% 12%, rgba(255, 132, 20, 0.25), transparent 32%),
     radial-gradient(circle at 84% 18%, rgba(252, 197, 129, 0.14), transparent 24%),
@@ -26,6 +92,9 @@
   --glow-b: rgba(255, 184, 92, 0.12);
 }
 
+:root[data-theme="graphite"],
+:root[data-theme="graphite"],
+:root[data-theme="graphite"],
 body[data-theme="graphite"] {
   --bg-0: #0b0e15;
   --bg-1: rgba(13, 18, 28, 0.92);
@@ -47,8 +116,20 @@ body[data-theme="graphite"] {
     linear-gradient(145deg, #05070a 8%, #0c1118 42%, #141c28 100%);
   --glow-a: rgba(150, 197, 255, 0.16);
   --glow-b: rgba(216, 224, 255, 0.12);
+  --field-bg: linear-gradient(180deg, rgba(36, 45, 60, 0.94), rgba(24, 31, 42, 0.94));
+  --field-bg-hover: linear-gradient(180deg, rgba(46, 57, 75, 0.96), rgba(31, 40, 55, 0.96));
+  --field-border: rgba(141, 198, 255, 0.4);
+  --field-text: #f4f7fb;
+  --field-muted: #d7e1ee;
+  --field-disabled-bg: linear-gradient(180deg, rgba(34, 42, 56, 0.78), rgba(24, 30, 41, 0.82));
+  --field-disabled-text: #d2dcea;
+  --field-popup-bg: #141b26;
+  --field-popup-text: #f4f7fb;
 }
 
+:root[data-theme="neonwave"],
+:root[data-theme="neonwave"],
+:root[data-theme="neonwave"],
 body[data-theme="neonwave"] {
   --bg-0: #090510;
   --text-0: #f8f8ff;
@@ -67,8 +148,20 @@ body[data-theme="neonwave"] {
     linear-gradient(145deg, #06040a 8%, #120b1b 42%, #140f28 100%);
   --glow-a: rgba(79, 227, 255, 0.18);
   --glow-b: rgba(255, 122, 230, 0.14);
+  --field-bg: linear-gradient(180deg, rgba(39, 26, 58, 0.94), rgba(20, 18, 40, 0.96));
+  --field-bg-hover: linear-gradient(180deg, rgba(53, 35, 77, 0.96), rgba(29, 23, 49, 0.96));
+  --field-border: rgba(121, 215, 255, 0.44);
+  --field-text: #f8f8ff;
+  --field-muted: #e0dcf6;
+  --field-disabled-bg: linear-gradient(180deg, rgba(43, 31, 61, 0.78), rgba(25, 20, 42, 0.82));
+  --field-disabled-text: #d8d3f2;
+  --field-popup-bg: #151328;
+  --field-popup-text: #f8f8ff;
 }
 
+:root[data-theme="daybreak"],
+:root[data-theme="daybreak"],
+:root[data-theme="daybreak"],
 body[data-theme="daybreak"] {
   --bg-0: #f5efe8;
   --text-0: #1c130d;
@@ -87,8 +180,22 @@ body[data-theme="daybreak"] {
     linear-gradient(145deg, #fff8ee 8%, #f2e4d3 42%, #e3d2bd 100%);
   --glow-a: rgba(255, 174, 92, 0.18);
   --glow-b: rgba(255, 230, 196, 0.18);
+  --field-bg: linear-gradient(180deg, rgba(255, 251, 245, 0.96), rgba(245, 234, 221, 0.92));
+  --field-bg-hover: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(248, 238, 226, 0.96));
+  --field-border: rgba(125, 57, 4, 0.26);
+  --field-text: #2b1d12;
+  --field-muted: #5d493b;
+  --field-disabled-bg: linear-gradient(180deg, rgba(244, 236, 227, 0.94), rgba(233, 220, 205, 0.92));
+  --field-disabled-text: #5a473a;
+  --field-popup-bg: #fff9f2;
+  --field-popup-text: #2b1d12;
+  --field-popup-selected-bg: #9b4808;
+  --field-popup-selected-text: #ffffff;
 }
 
+:root[data-theme="ember"],
+:root[data-theme="ember"],
+:root[data-theme="ember"],
 body[data-theme="ember"] {
   --bg-0: #0e0a08;
   --text-0: #fff3ea;
@@ -107,6 +214,527 @@ body[data-theme="ember"] {
     linear-gradient(145deg, #0b0706 8%, #160d0a 42%, #22120d 100%);
   --glow-a: rgba(255, 120, 56, 0.18);
   --glow-b: rgba(255, 190, 122, 0.12);
+  --field-bg: linear-gradient(180deg, rgba(53, 31, 24, 0.94), rgba(30, 21, 19, 0.96));
+  --field-bg-hover: linear-gradient(180deg, rgba(71, 40, 27, 0.96), rgba(39, 27, 20, 0.98));
+  --field-border: rgba(255, 138, 63, 0.42);
+  --field-text: #fff3ea;
+  --field-muted: #ead7ca;
+  --field-disabled-bg: linear-gradient(180deg, rgba(54, 34, 26, 0.78), rgba(32, 22, 18, 0.82));
+  --field-disabled-text: #e5d0c2;
+  --field-popup-bg: #19110f;
+  --field-popup-text: #fff3ea;
+}
+
+:root[data-theme="graphite"],
+body[data-theme="graphite"] {
+  --panel-border: rgba(175, 194, 223, 0.14);
+  --toolbar-bg: linear-gradient(180deg, rgba(153, 189, 255, 0.13), rgba(255, 255, 255, 0.04));
+  --toolbar-border: rgba(141, 198, 255, 0.26);
+  --button-secondary-bg: linear-gradient(180deg, rgba(131, 173, 238, 0.18), rgba(31, 40, 55, 0.32));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(146, 201, 255, 0.28), rgba(48, 65, 88, 0.42));
+  --button-secondary-border: rgba(141, 198, 255, 0.38);
+  --button-primary-bg: linear-gradient(180deg, #9ad4ff, #63aef7);
+  --button-primary-hover-bg: linear-gradient(180deg, #bae3ff, #78bbff);
+  --button-primary-text: #08111d;
+  --focus-ring: rgba(120, 187, 255, 0.18);
+  --tree-bg: rgba(12, 18, 27, 0.34);
+  --tree-hover-bg: rgba(141, 198, 255, 0.14);
+  --status-bg: rgba(131, 173, 238, 0.1);
+  --status-border: rgba(141, 198, 255, 0.18);
+  --progress-panel-bg: rgba(141, 198, 255, 0.1);
+  --progress-panel-border: rgba(141, 198, 255, 0.18);
+  --progress-track-bg: rgba(141, 198, 255, 0.12);
+  --chip-bg: rgba(141, 198, 255, 0.1);
+  --chip-hover-bg: rgba(141, 198, 255, 0.22);
+  --chip-border: rgba(141, 198, 255, 0.18);
+  --card-assistant-bg: linear-gradient(180deg, rgba(141, 198, 255, 0.12), rgba(15, 20, 31, 0.2));
+  --card-user-bg: linear-gradient(180deg, rgba(117, 176, 255, 0.34), rgba(78, 127, 199, 0.26));
+  --card-user-border: rgba(141, 198, 255, 0.38);
+  --code-bg: rgba(12, 18, 27, 0.5);
+}
+
+:root[data-theme="neonwave"],
+body[data-theme="neonwave"] {
+  --panel-border: rgba(220, 160, 255, 0.16);
+  --toolbar-bg: linear-gradient(180deg, rgba(103, 72, 164, 0.26), rgba(15, 11, 31, 0.18));
+  --toolbar-border: rgba(79, 227, 255, 0.28);
+  --button-secondary-bg: linear-gradient(180deg, rgba(108, 78, 173, 0.26), rgba(27, 21, 49, 0.34));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(255, 122, 230, 0.28), rgba(79, 227, 255, 0.18));
+  --button-secondary-border: rgba(79, 227, 255, 0.34);
+  --button-primary-bg: linear-gradient(180deg, #5ce7ff, #8d6dff);
+  --button-primary-hover-bg: linear-gradient(180deg, #84edff, #aa8cff);
+  --button-primary-text: #0d0620;
+  --focus-ring: rgba(79, 227, 255, 0.2);
+  --tree-bg: rgba(10, 8, 24, 0.38);
+  --tree-hover-bg: rgba(255, 122, 230, 0.14);
+  --status-bg: rgba(79, 227, 255, 0.1);
+  --status-border: rgba(255, 122, 230, 0.18);
+  --progress-panel-bg: rgba(255, 122, 230, 0.1);
+  --progress-panel-border: rgba(79, 227, 255, 0.16);
+  --progress-track-bg: rgba(121, 215, 255, 0.12);
+  --chip-bg: rgba(255, 122, 230, 0.12);
+  --chip-hover-bg: rgba(79, 227, 255, 0.18);
+  --chip-border: rgba(121, 215, 255, 0.18);
+  --card-assistant-bg: linear-gradient(180deg, rgba(95, 74, 151, 0.22), rgba(19, 15, 38, 0.22));
+  --card-user-bg: linear-gradient(180deg, rgba(79, 227, 255, 0.28), rgba(255, 122, 230, 0.24));
+  --card-user-border: rgba(79, 227, 255, 0.34);
+  --code-bg: rgba(14, 12, 33, 0.52);
+}
+
+:root[data-theme="daybreak"],
+body[data-theme="daybreak"] {
+  --panel-border: rgba(125, 57, 4, 0.14);
+  --toolbar-bg: linear-gradient(180deg, rgba(255, 247, 236, 0.92), rgba(245, 232, 219, 0.76));
+  --toolbar-border: rgba(125, 57, 4, 0.18);
+  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(249, 239, 227, 0.8));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(255, 238, 219, 0.98), rgba(245, 222, 198, 0.92));
+  --button-secondary-border: rgba(125, 57, 4, 0.18);
+  --button-secondary-text: #2b1d12;
+  --button-primary-bg: linear-gradient(180deg, #ff9654, #f26a1d);
+  --button-primary-hover-bg: linear-gradient(180deg, #ffab72, #ff7c2d);
+  --button-primary-text: #2b1d12;
+  --focus-ring: rgba(242, 106, 29, 0.2);
+  --tree-bg: rgba(255, 255, 255, 0.5);
+  --tree-hover-bg: rgba(255, 159, 89, 0.18);
+  --status-bg: rgba(255, 250, 244, 0.72);
+  --status-border: rgba(125, 57, 4, 0.12);
+  --status-idle-dot: rgba(125, 57, 4, 0.28);
+  --status-idle-ring: rgba(125, 57, 4, 0.08);
+  --progress-panel-bg: rgba(255, 176, 115, 0.2);
+  --progress-panel-border: rgba(125, 57, 4, 0.14);
+  --progress-track-bg: rgba(125, 57, 4, 0.12);
+  --chip-bg: rgba(255, 255, 255, 0.72);
+  --chip-hover-bg: rgba(255, 176, 115, 0.26);
+  --chip-border: rgba(125, 57, 4, 0.14);
+  --card-assistant-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(250, 239, 227, 0.72));
+  --card-user-bg: linear-gradient(180deg, rgba(255, 184, 130, 0.38), rgba(255, 122, 45, 0.22));
+  --card-user-border: rgba(242, 106, 29, 0.26);
+  --code-bg: rgba(140, 97, 64, 0.1);
+  --code-border: rgba(125, 57, 4, 0.12);
+  --code-badge-bg: rgba(125, 57, 4, 0.08);
+  --syntax-keyword: #a44406;
+  --syntax-comment: #557a45;
+  --syntax-string: #1f7a4d;
+  --syntax-number: #76520f;
+  --syntax-tag: #8a4b06;
+  --badge-summary-bg: rgba(242, 106, 29, 0.14);
+  --badge-summary-border: rgba(125, 57, 4, 0.14);
+  --badge-summary-fg: #8a4b06;
+  --badge-action-bg: rgba(242, 106, 29, 0.14);
+  --badge-action-fg: #8a4b06;
+  --badge-status-bg: rgba(31, 122, 77, 0.12);
+  --badge-status-fg: #1f7a4d;
+  --badge-error-bg: rgba(180, 35, 24, 0.12);
+  --badge-error-fg: #b42318;
+  --badge-warn-bg: rgba(173, 102, 8, 0.12);
+  --badge-warn-fg: #8a4b06;
+  --badge-info-bg: rgba(47, 72, 88, 0.1);
+  --badge-info-fg: #355468;
+  --badge-backup-bg: rgba(111, 76, 153, 0.12);
+  --badge-backup-fg: #6f4c99;
+  --dialog-backdrop: rgba(55, 32, 15, 0.24);
+  --diff-add-bg: rgba(31, 122, 77, 0.12);
+  --diff-add-fg: #1f7a4d;
+  --diff-remove-bg: rgba(180, 35, 24, 0.1);
+  --diff-remove-fg: #b42318;
+}
+
+:root[data-theme="ember"],
+body[data-theme="ember"] {
+  --panel-border: rgba(255, 196, 153, 0.14);
+  --toolbar-bg: linear-gradient(180deg, rgba(88, 42, 23, 0.3), rgba(22, 14, 11, 0.18));
+  --toolbar-border: rgba(255, 138, 63, 0.24);
+  --button-secondary-bg: linear-gradient(180deg, rgba(111, 58, 31, 0.28), rgba(37, 21, 18, 0.36));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(158, 81, 39, 0.38), rgba(59, 30, 21, 0.42));
+  --button-secondary-border: rgba(255, 138, 63, 0.34);
+  --button-primary-bg: linear-gradient(180deg, #ffb15e, #ff7128);
+  --button-primary-hover-bg: linear-gradient(180deg, #ffc078, #ff8948);
+  --button-primary-text: #220f08;
+  --focus-ring: rgba(255, 107, 26, 0.2);
+  --tree-bg: rgba(25, 14, 11, 0.4);
+  --tree-hover-bg: rgba(255, 138, 63, 0.16);
+  --status-bg: rgba(67, 34, 23, 0.42);
+  --status-border: rgba(255, 138, 63, 0.18);
+  --progress-panel-bg: rgba(255, 138, 63, 0.12);
+  --progress-panel-border: rgba(255, 138, 63, 0.18);
+  --progress-track-bg: rgba(255, 196, 153, 0.12);
+  --chip-bg: rgba(255, 138, 63, 0.12);
+  --chip-hover-bg: rgba(255, 138, 63, 0.2);
+  --chip-border: rgba(255, 138, 63, 0.18);
+  --card-assistant-bg: linear-gradient(180deg, rgba(81, 42, 29, 0.22), rgba(28, 18, 15, 0.22));
+  --card-user-bg: linear-gradient(180deg, rgba(255, 177, 94, 0.26), rgba(255, 113, 40, 0.24));
+  --card-user-border: rgba(255, 138, 63, 0.34);
+  --code-bg: rgba(24, 14, 11, 0.54);
+}
+
+:root[data-theme="aurora"],
+:root[data-theme="aurora"],
+:root[data-theme="aurora"],
+:root[data-theme="aurora"],
+body[data-theme="aurora"] {
+  --bg-0: #071018;
+  --bg-1: rgba(9, 18, 29, 0.9);
+  --bg-2: rgba(15, 24, 37, 0.96);
+  --bg-3: rgba(255, 255, 255, 0.08);
+  --text-0: #eff8ff;
+  --text-1: #c4d8f0;
+  --text-2: #87a2bd;
+  --line-0: rgba(147, 224, 255, 0.14);
+  --line-1: rgba(111, 255, 214, 0.34);
+  --accent-0: #67f0c9;
+  --accent-1: #9bdcff;
+  --accent-2: #f3fffd;
+  --surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(164, 220, 255, 0.02));
+  --panel-bg: linear-gradient(180deg, rgba(8, 18, 30, 0.96), rgba(5, 12, 21, 0.92));
+  --shell-bg:
+    radial-gradient(circle at 18% 12%, rgba(103, 240, 201, 0.24), transparent 30%),
+    radial-gradient(circle at 84% 18%, rgba(136, 92, 255, 0.18), transparent 28%),
+    linear-gradient(145deg, #040a12 8%, #081622 42%, #0c1e2d 100%);
+  --glow-a: rgba(103, 240, 201, 0.2);
+  --glow-b: rgba(136, 92, 255, 0.14);
+  --field-bg: linear-gradient(180deg, rgba(23, 42, 55, 0.94), rgba(11, 24, 34, 0.96));
+  --field-bg-hover: linear-gradient(180deg, rgba(28, 50, 65, 0.96), rgba(14, 28, 41, 0.98));
+  --field-border: rgba(103, 240, 201, 0.34);
+  --field-text: #eff8ff;
+  --field-muted: #d3e6f2;
+  --field-disabled-bg: linear-gradient(180deg, rgba(19, 35, 46, 0.8), rgba(12, 24, 32, 0.86));
+  --field-disabled-text: #bfd1dd;
+  --field-popup-bg: #101b26;
+  --field-popup-text: #eff8ff;
+  --field-popup-selected-bg: #0f7d73;
+  --field-popup-selected-text: #ffffff;
+  --panel-border: rgba(147, 224, 255, 0.14);
+  --toolbar-bg: linear-gradient(180deg, rgba(66, 145, 155, 0.2), rgba(15, 24, 37, 0.18));
+  --toolbar-border: rgba(103, 240, 201, 0.26);
+  --button-secondary-bg: linear-gradient(180deg, rgba(49, 97, 110, 0.28), rgba(13, 27, 38, 0.34));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(68, 130, 147, 0.34), rgba(20, 39, 54, 0.42));
+  --button-secondary-border: rgba(103, 240, 201, 0.28);
+  --button-primary-bg: linear-gradient(180deg, #9ee8ff, #67f0c9);
+  --button-primary-hover-bg: linear-gradient(180deg, #bef0ff, #83f4d6);
+  --button-primary-text: #062019;
+  --focus-ring: rgba(103, 240, 201, 0.2);
+  --tree-bg: rgba(7, 18, 28, 0.44);
+  --tree-hover-bg: rgba(103, 240, 201, 0.14);
+  --status-bg: rgba(28, 60, 73, 0.32);
+  --status-border: rgba(103, 240, 201, 0.18);
+  --progress-panel-bg: rgba(103, 240, 201, 0.1);
+  --progress-panel-border: rgba(103, 240, 201, 0.18);
+  --progress-track-bg: rgba(155, 220, 255, 0.12);
+  --chip-bg: rgba(103, 240, 201, 0.1);
+  --chip-hover-bg: rgba(103, 240, 201, 0.18);
+  --chip-border: rgba(103, 240, 201, 0.16);
+  --card-assistant-bg: linear-gradient(180deg, rgba(41, 82, 92, 0.2), rgba(10, 21, 31, 0.22));
+  --card-user-bg: linear-gradient(180deg, rgba(103, 240, 201, 0.28), rgba(155, 220, 255, 0.2));
+  --card-user-border: rgba(103, 240, 201, 0.3);
+  --code-bg: rgba(6, 15, 24, 0.54);
+}
+
+:root[data-theme="obsidian"],
+:root[data-theme="obsidian"],
+:root[data-theme="obsidian"],
+:root[data-theme="obsidian"],
+body[data-theme="obsidian"] {
+  --bg-0: #050608;
+  --bg-1: rgba(10, 12, 16, 0.92);
+  --bg-2: rgba(18, 22, 28, 0.96);
+  --bg-3: rgba(255, 255, 255, 0.05);
+  --text-0: #f3f5f8;
+  --text-1: #d0d8e2;
+  --text-2: #8793a3;
+  --line-0: rgba(163, 182, 212, 0.12);
+  --line-1: rgba(111, 135, 168, 0.28);
+  --accent-0: #d9e3f3;
+  --accent-1: #90a4c3;
+  --accent-2: #ffffff;
+  --surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  --panel-bg: linear-gradient(180deg, rgba(12, 15, 19, 0.97), rgba(6, 8, 12, 0.94));
+  --shell-bg:
+    radial-gradient(circle at 18% 12%, rgba(76, 92, 117, 0.2), transparent 32%),
+    radial-gradient(circle at 84% 18%, rgba(193, 205, 223, 0.08), transparent 24%),
+    linear-gradient(145deg, #020304 8%, #07090d 42%, #0d1116 100%);
+  --glow-a: rgba(76, 92, 117, 0.16);
+  --glow-b: rgba(193, 205, 223, 0.08);
+  --field-bg: linear-gradient(180deg, rgba(27, 33, 42, 0.94), rgba(15, 19, 25, 0.96));
+  --field-bg-hover: linear-gradient(180deg, rgba(34, 42, 53, 0.96), rgba(18, 24, 31, 0.98));
+  --field-border: rgba(144, 164, 195, 0.28);
+  --field-text: #f3f5f8;
+  --field-muted: #d0d8e2;
+  --field-disabled-bg: linear-gradient(180deg, rgba(26, 31, 38, 0.8), rgba(16, 20, 25, 0.84));
+  --field-disabled-text: #bcc6d3;
+  --field-popup-bg: #12171d;
+  --field-popup-text: #f3f5f8;
+  --field-popup-selected-bg: #364557;
+  --field-popup-selected-text: #ffffff;
+  --panel-border: rgba(163, 182, 212, 0.1);
+  --toolbar-bg: linear-gradient(180deg, rgba(42, 51, 64, 0.22), rgba(14, 17, 21, 0.22));
+  --toolbar-border: rgba(144, 164, 195, 0.18);
+  --button-secondary-bg: linear-gradient(180deg, rgba(52, 63, 77, 0.22), rgba(13, 17, 22, 0.36));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(68, 82, 100, 0.28), rgba(18, 24, 31, 0.44));
+  --button-secondary-border: rgba(144, 164, 195, 0.24);
+  --button-primary-bg: linear-gradient(180deg, #d6e1ef, #92a7c3);
+  --button-primary-hover-bg: linear-gradient(180deg, #e2ebf6, #a7bad2);
+  --button-primary-text: #0b0f15;
+  --focus-ring: rgba(144, 164, 195, 0.18);
+  --tree-bg: rgba(9, 12, 16, 0.46);
+  --tree-hover-bg: rgba(144, 164, 195, 0.14);
+  --status-bg: rgba(28, 33, 42, 0.48);
+  --status-border: rgba(144, 164, 195, 0.14);
+  --progress-panel-bg: rgba(144, 164, 195, 0.08);
+  --progress-panel-border: rgba(144, 164, 195, 0.14);
+  --progress-track-bg: rgba(144, 164, 195, 0.1);
+  --chip-bg: rgba(144, 164, 195, 0.08);
+  --chip-hover-bg: rgba(144, 164, 195, 0.16);
+  --chip-border: rgba(144, 164, 195, 0.14);
+  --card-assistant-bg: linear-gradient(180deg, rgba(44, 53, 64, 0.2), rgba(11, 13, 17, 0.22));
+  --card-user-bg: linear-gradient(180deg, rgba(126, 145, 171, 0.24), rgba(76, 92, 117, 0.2));
+  --card-user-border: rgba(144, 164, 195, 0.24);
+  --code-bg: rgba(9, 12, 16, 0.56);
+}
+
+:root[data-theme="paperink"],
+:root[data-theme="paperink"],
+:root[data-theme="paperink"],
+:root[data-theme="paperink"],
+body[data-theme="paperink"] {
+  --bg-0: #f7f3eb;
+  --bg-1: rgba(250, 246, 239, 0.94);
+  --bg-2: rgba(242, 236, 227, 0.96);
+  --bg-3: rgba(42, 32, 20, 0.06);
+  --text-0: #181512;
+  --text-1: #4d463f;
+  --text-2: #7b736b;
+  --line-0: rgba(57, 45, 31, 0.12);
+  --line-1: rgba(57, 45, 31, 0.2);
+  --accent-0: #2f4858;
+  --accent-1: #485d69;
+  --accent-2: #15242b;
+  --surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 239, 230, 0.74));
+  --panel-bg: linear-gradient(180deg, rgba(252, 249, 243, 0.96), rgba(241, 235, 226, 0.92));
+  --shell-bg:
+    radial-gradient(circle at 18% 12%, rgba(184, 166, 138, 0.22), transparent 32%),
+    radial-gradient(circle at 84% 18%, rgba(219, 210, 198, 0.18), transparent 24%),
+    linear-gradient(145deg, #fcfaf6 8%, #f2ece4 42%, #e8dfd3 100%);
+  --glow-a: rgba(184, 166, 138, 0.12);
+  --glow-b: rgba(219, 210, 198, 0.16);
+  --field-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 238, 229, 0.94));
+  --field-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(238, 231, 222, 0.96));
+  --field-border: rgba(57, 45, 31, 0.16);
+  --field-text: #1d1916;
+  --field-muted: #5e564e;
+  --field-disabled-bg: linear-gradient(180deg, rgba(240, 234, 224, 0.94), rgba(230, 223, 212, 0.92));
+  --field-disabled-text: #6f665d;
+  --field-popup-bg: #fffdf8;
+  --field-popup-text: #1d1916;
+  --field-popup-selected-bg: #324d5e;
+  --field-popup-selected-text: #ffffff;
+  --panel-border: rgba(57, 45, 31, 0.1);
+  --toolbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(244, 239, 231, 0.8));
+  --toolbar-border: rgba(57, 45, 31, 0.12);
+  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(242, 235, 226, 0.84));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(233, 226, 216, 0.9));
+  --button-secondary-border: rgba(57, 45, 31, 0.12);
+  --button-secondary-text: #1d1916;
+  --button-primary-bg: linear-gradient(180deg, #4b6978, #2f4858);
+  --button-primary-hover-bg: linear-gradient(180deg, #597786, #3a5565);
+  --button-primary-text: #fbf8f2;
+  --focus-ring: rgba(47, 72, 88, 0.16);
+  --tree-bg: rgba(255, 255, 255, 0.64);
+  --tree-hover-bg: rgba(47, 72, 88, 0.1);
+  --status-bg: rgba(255, 255, 255, 0.74);
+  --status-border: rgba(57, 45, 31, 0.08);
+  --status-idle-dot: rgba(57, 45, 31, 0.28);
+  --status-idle-ring: rgba(57, 45, 31, 0.08);
+  --progress-panel-bg: rgba(47, 72, 88, 0.08);
+  --progress-panel-border: rgba(57, 45, 31, 0.1);
+  --progress-track-bg: rgba(57, 45, 31, 0.1);
+  --chip-bg: rgba(47, 72, 88, 0.08);
+  --chip-hover-bg: rgba(47, 72, 88, 0.16);
+  --chip-border: rgba(57, 45, 31, 0.08);
+  --card-assistant-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(242, 235, 226, 0.78));
+  --card-user-bg: linear-gradient(180deg, rgba(74, 105, 120, 0.18), rgba(47, 72, 88, 0.12));
+  --card-user-border: rgba(47, 72, 88, 0.18);
+  --code-bg: rgba(47, 72, 88, 0.08);
+  --code-border: rgba(57, 45, 31, 0.08);
+  --code-badge-bg: rgba(57, 45, 31, 0.08);
+  --syntax-keyword: #7f3f11;
+  --syntax-comment: #556b50;
+  --syntax-string: #216a4c;
+  --syntax-number: #6c560f;
+  --syntax-tag: #355468;
+  --badge-summary-bg: rgba(47, 72, 88, 0.1);
+  --badge-summary-border: rgba(57, 45, 31, 0.1);
+  --badge-summary-fg: #355468;
+  --badge-action-bg: rgba(127, 63, 17, 0.12);
+  --badge-action-fg: #7f3f11;
+  --badge-status-bg: rgba(33, 106, 76, 0.12);
+  --badge-status-fg: #216a4c;
+  --badge-error-bg: rgba(180, 35, 24, 0.1);
+  --badge-error-fg: #b42318;
+  --badge-warn-bg: rgba(108, 86, 15, 0.12);
+  --badge-warn-fg: #6c560f;
+  --badge-info-bg: rgba(53, 84, 104, 0.1);
+  --badge-info-fg: #355468;
+  --badge-backup-bg: rgba(111, 76, 153, 0.1);
+  --badge-backup-fg: #6f4c99;
+  --dialog-backdrop: rgba(45, 33, 20, 0.18);
+  --diff-add-bg: rgba(31, 122, 77, 0.1);
+  --diff-add-fg: #1f7a4d;
+  --diff-remove-bg: rgba(180, 35, 24, 0.08);
+  --diff-remove-fg: #b42318;
+}
+
+:root[data-theme="verdant"],
+:root[data-theme="verdant"],
+:root[data-theme="verdant"],
+:root[data-theme="verdant"],
+body[data-theme="verdant"] {
+  --bg-0: #eef6f1;
+  --bg-1: rgba(240, 248, 243, 0.94);
+  --bg-2: rgba(228, 241, 234, 0.96);
+  --bg-3: rgba(16, 70, 46, 0.06);
+  --text-0: #13231b;
+  --text-1: #365244;
+  --text-2: #648173;
+  --line-0: rgba(32, 97, 66, 0.12);
+  --line-1: rgba(46, 140, 93, 0.22);
+  --accent-0: #238b5b;
+  --accent-1: #44b17b;
+  --accent-2: #123b29;
+  --surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(229, 241, 233, 0.74));
+  --panel-bg: linear-gradient(180deg, rgba(248, 252, 249, 0.96), rgba(228, 241, 234, 0.92));
+  --shell-bg:
+    radial-gradient(circle at 18% 12%, rgba(110, 198, 153, 0.2), transparent 32%),
+    radial-gradient(circle at 84% 18%, rgba(190, 228, 207, 0.2), transparent 24%),
+    linear-gradient(145deg, #f8fcf9 8%, #edf6f0 42%, #dbece0 100%);
+  --glow-a: rgba(110, 198, 153, 0.12);
+  --glow-b: rgba(190, 228, 207, 0.18);
+  --field-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(235, 244, 238, 0.94));
+  --field-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(225, 239, 231, 0.96));
+  --field-border: rgba(32, 97, 66, 0.16);
+  --field-text: #13231b;
+  --field-muted: #4c6c5d;
+  --field-disabled-bg: linear-gradient(180deg, rgba(231, 240, 233, 0.94), rgba(219, 231, 223, 0.92));
+  --field-disabled-text: #5d7869;
+  --field-popup-bg: #fbfffc;
+  --field-popup-text: #13231b;
+  --field-popup-selected-bg: #2d8159;
+  --field-popup-selected-text: #ffffff;
+  --panel-border: rgba(32, 97, 66, 0.1);
+  --toolbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(230, 242, 234, 0.82));
+  --toolbar-border: rgba(32, 97, 66, 0.12);
+  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(228, 241, 234, 0.84));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(247, 255, 250, 0.98), rgba(214, 233, 221, 0.9));
+  --button-secondary-border: rgba(32, 97, 66, 0.12);
+  --button-secondary-text: #13231b;
+  --button-primary-bg: linear-gradient(180deg, #57c28b, #238b5b);
+  --button-primary-hover-bg: linear-gradient(180deg, #71d39e, #2d9b66);
+  --button-primary-text: #123b29;
+  --focus-ring: rgba(35, 139, 91, 0.16);
+  --tree-bg: rgba(255, 255, 255, 0.6);
+  --tree-hover-bg: rgba(35, 139, 91, 0.1);
+  --status-bg: rgba(255, 255, 255, 0.74);
+  --status-border: rgba(32, 97, 66, 0.08);
+  --status-idle-dot: rgba(32, 97, 66, 0.28);
+  --status-idle-ring: rgba(32, 97, 66, 0.08);
+  --progress-panel-bg: rgba(35, 139, 91, 0.08);
+  --progress-panel-border: rgba(32, 97, 66, 0.1);
+  --progress-track-bg: rgba(32, 97, 66, 0.1);
+  --chip-bg: rgba(35, 139, 91, 0.08);
+  --chip-hover-bg: rgba(35, 139, 91, 0.16);
+  --chip-border: rgba(32, 97, 66, 0.08);
+  --card-assistant-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(228, 241, 234, 0.78));
+  --card-user-bg: linear-gradient(180deg, rgba(87, 194, 139, 0.22), rgba(35, 139, 91, 0.14));
+  --card-user-border: rgba(35, 139, 91, 0.18);
+  --code-bg: rgba(35, 139, 91, 0.08);
+  --code-border: rgba(32, 97, 66, 0.08);
+  --code-badge-bg: rgba(32, 97, 66, 0.08);
+  --syntax-keyword: #1e6b46;
+  --syntax-comment: #547263;
+  --syntax-string: #1d7a47;
+  --syntax-number: #5d6f21;
+  --syntax-tag: #2f7d59;
+  --badge-summary-bg: rgba(35, 139, 91, 0.1);
+  --badge-summary-border: rgba(32, 97, 66, 0.1);
+  --badge-summary-fg: #1e6b46;
+  --badge-action-bg: rgba(35, 139, 91, 0.12);
+  --badge-action-fg: #1e6b46;
+  --badge-status-bg: rgba(29, 122, 71, 0.12);
+  --badge-status-fg: #1d7a47;
+  --badge-error-bg: rgba(176, 34, 23, 0.1);
+  --badge-error-fg: #b02217;
+  --badge-warn-bg: rgba(93, 111, 33, 0.12);
+  --badge-warn-fg: #5d6f21;
+  --badge-info-bg: rgba(47, 125, 89, 0.1);
+  --badge-info-fg: #2f7d59;
+  --badge-backup-bg: rgba(111, 76, 153, 0.1);
+  --badge-backup-fg: #6f4c99;
+  --dialog-backdrop: rgba(21, 55, 35, 0.18);
+  --diff-add-bg: rgba(29, 122, 71, 0.12);
+  --diff-add-fg: #1d7a47;
+  --diff-remove-bg: rgba(176, 34, 23, 0.08);
+  --diff-remove-fg: #b02217;
+}
+
+:root[data-theme="amethyst"],
+:root[data-theme="amethyst"],
+:root[data-theme="amethyst"],
+:root[data-theme="amethyst"],
+body[data-theme="amethyst"] {
+  --bg-0: #0c0814;
+  --bg-1: rgba(17, 13, 28, 0.92);
+  --bg-2: rgba(26, 19, 42, 0.96);
+  --bg-3: rgba(255, 255, 255, 0.06);
+  --text-0: #f8f2ff;
+  --text-1: #dccff0;
+  --text-2: #a898c2;
+  --line-0: rgba(206, 175, 255, 0.12);
+  --line-1: rgba(179, 124, 255, 0.28);
+  --accent-0: #b77cff;
+  --accent-1: #e3b7ff;
+  --accent-2: #fff5ff;
+  --surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  --panel-bg: linear-gradient(180deg, rgba(23, 15, 38, 0.97), rgba(11, 8, 21, 0.94));
+  --shell-bg:
+    radial-gradient(circle at 18% 12%, rgba(183, 124, 255, 0.22), transparent 32%),
+    radial-gradient(circle at 84% 18%, rgba(255, 132, 222, 0.14), transparent 24%),
+    linear-gradient(145deg, #07040c 8%, #120b1d 42%, #190f29 100%);
+  --glow-a: rgba(183, 124, 255, 0.18);
+  --glow-b: rgba(255, 132, 222, 0.12);
+  --field-bg: linear-gradient(180deg, rgba(41, 28, 62, 0.94), rgba(21, 16, 35, 0.96));
+  --field-bg-hover: linear-gradient(180deg, rgba(53, 36, 79, 0.96), rgba(29, 20, 47, 0.98));
+  --field-border: rgba(183, 124, 255, 0.32);
+  --field-text: #f8f2ff;
+  --field-muted: #dccff0;
+  --field-disabled-bg: linear-gradient(180deg, rgba(39, 28, 58, 0.8), rgba(23, 18, 36, 0.84));
+  --field-disabled-text: #ccb9e2;
+  --field-popup-bg: #191127;
+  --field-popup-text: #f8f2ff;
+  --field-popup-selected-bg: #7238b9;
+  --field-popup-selected-text: #ffffff;
+  --panel-border: rgba(206, 175, 255, 0.12);
+  --toolbar-bg: linear-gradient(180deg, rgba(88, 54, 138, 0.24), rgba(22, 16, 37, 0.2));
+  --toolbar-border: rgba(183, 124, 255, 0.22);
+  --button-secondary-bg: linear-gradient(180deg, rgba(83, 52, 132, 0.28), rgba(22, 16, 37, 0.34));
+  --button-secondary-hover-bg: linear-gradient(180deg, rgba(110, 70, 173, 0.34), rgba(33, 21, 53, 0.42));
+  --button-secondary-border: rgba(183, 124, 255, 0.28);
+  --button-primary-bg: linear-gradient(180deg, #ebb9ff, #b77cff);
+  --button-primary-hover-bg: linear-gradient(180deg, #f2cdff, #ca95ff);
+  --button-primary-text: #1a0d28;
+  --focus-ring: rgba(183, 124, 255, 0.2);
+  --tree-bg: rgba(18, 12, 30, 0.44);
+  --tree-hover-bg: rgba(183, 124, 255, 0.14);
+  --status-bg: rgba(57, 33, 88, 0.42);
+  --status-border: rgba(183, 124, 255, 0.16);
+  --progress-panel-bg: rgba(183, 124, 255, 0.1);
+  --progress-panel-border: rgba(183, 124, 255, 0.16);
+  --progress-track-bg: rgba(206, 175, 255, 0.12);
+  --chip-bg: rgba(183, 124, 255, 0.1);
+  --chip-hover-bg: rgba(183, 124, 255, 0.18);
+  --chip-border: rgba(183, 124, 255, 0.16);
+  --card-assistant-bg: linear-gradient(180deg, rgba(77, 46, 120, 0.22), rgba(17, 12, 28, 0.22));
+  --card-user-bg: linear-gradient(180deg, rgba(235, 185, 255, 0.22), rgba(183, 124, 255, 0.22));
+  --card-user-border: rgba(183, 124, 255, 0.28);
+  --code-bg: rgba(16, 11, 27, 0.56);
 }
 
 * { box-sizing: border-box; }
@@ -116,6 +744,16 @@ body {
   color: var(--text-0);
   background: var(--shell-bg);
   overflow: hidden;
+}
+
+:root:not([data-theme="daybreak"]):not([data-theme="paperink"]):not([data-theme="verdant"]) {
+  color-scheme: dark;
+}
+
+:root[data-theme="daybreak"],
+:root[data-theme="paperink"],
+:root[data-theme="verdant"] {
+  color-scheme: light;
 }
 body::before,
 body::after {
@@ -142,6 +780,7 @@ body::after {
 }
 
 button,
+input,
 select,
 textarea {
   font: inherit;
@@ -162,7 +801,7 @@ textarea {
 .sessions-dialog__panel,
 .settings-dialog__panel {
   background: var(--surface-bg);
-  border: 1px solid var(--line-0);
+  border: 1px solid var(--panel-border);
   box-shadow: var(--shadow-xl);
   backdrop-filter: blur(24px) saturate(125%);
 }
@@ -217,12 +856,12 @@ textarea {
 .dialog-close,
 .session-item__action,
 .icon-button {
-  border: 1px solid var(--line-1);
+  border: 1px solid var(--button-secondary-border);
   border-radius: 18px;
   min-height: 50px;
-  color: var(--text-0);
-  background: var(--surface-bg);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: var(--button-secondary-text);
+  background: var(--button-secondary-bg);
+  box-shadow: var(--control-shadow);
 }
 
 .menu-button {
@@ -240,15 +879,20 @@ textarea {
 .session-item__action:hover,
 .icon-button:hover {
   transform: translateY(-1px);
-  background: linear-gradient(180deg, rgba(255, 137, 44, 0.24), rgba(255, 255, 255, 0.08));
-  border-color: rgba(255, 162, 82, 0.7);
+  background: var(--button-secondary-hover-bg);
+  border-color: color-mix(in srgb, var(--button-secondary-border) 84%, white 16%);
 }
 
 .menu-button--primary,
 .send-button {
-  background: linear-gradient(180deg, #ff9838, #ff6d00);
-  color: #1a1008;
+  background: var(--button-primary-bg);
+  color: var(--button-primary-text);
   border-color: transparent;
+}
+
+.menu-button--primary:hover,
+.send-button:hover {
+  background: var(--button-primary-hover-bg);
 }
 
 .menu-section {
@@ -267,12 +911,25 @@ textarea {
   padding: 0 14px;
   font-weight: 700;
   appearance: none;
+  color: var(--field-text);
+  background-color: transparent;
   background-image:
+    linear-gradient(180deg, transparent, transparent),
+    linear-gradient(45deg, transparent 50%, var(--accent-2) 50%),
+    linear-gradient(135deg, var(--accent-2) 50%, transparent 50%);
+  background-color: var(--field-popup-bg);
+  background:
+    var(--field-bg),
     linear-gradient(45deg, transparent 50%, var(--accent-2) 50%),
     linear-gradient(135deg, var(--accent-2) 50%, transparent 50%);
   background-position: calc(100% - 22px) 22px, calc(100% - 16px) 22px;
-  background-size: 6px 6px, 6px 6px;
+  background-position:
+    0 0,
+    calc(100% - 22px) 22px,
+    calc(100% - 16px) 22px;
+  background-size: auto, 6px 6px, 6px 6px;
   background-repeat: no-repeat;
+  border-color: var(--field-border);
 }
 
 .settings-input {
@@ -280,11 +937,46 @@ textarea {
   min-height: 50px;
   padding: 0 14px;
   font-weight: 600;
-  color: var(--text-0);
+  color: var(--field-text);
+  background: var(--field-bg);
+  border-color: var(--field-border);
 }
 
 .settings-input::placeholder {
-  color: var(--text-1);
+  color: var(--field-muted);
+  opacity: 1;
+}
+
+.theme-select,
+.settings-input,
+.settings-input-group {
+  background: var(--field-bg);
+  border-color: var(--field-border);
+}
+
+.theme-select:hover,
+.settings-input:hover,
+.settings-input-group:hover {
+  background: var(--field-bg-hover);
+  border-color: color-mix(in srgb, var(--field-border) 78%, white 22%);
+}
+
+.theme-select option,
+.theme-select optgroup {
+  color: var(--field-popup-text);
+  background: var(--field-popup-bg);
+}
+
+.theme-select option:checked,
+.theme-select option:hover,
+.theme-select option:focus {
+  color: var(--field-popup-selected-text);
+  background: var(--field-popup-selected-bg);
+}
+
+.theme-select option[disabled] {
+  color: var(--field-disabled-text);
+  background: var(--field-popup-bg);
 }
 
 /* ── Workspace file tree ──────────────────────────────── */
@@ -295,8 +987,8 @@ textarea {
 
 .context-details {
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  background: var(--surface-bg);
   overflow: hidden;
 }
 
@@ -319,7 +1011,7 @@ textarea {
   padding: 8px 12px;
   display: grid;
   gap: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid var(--panel-border);
 }
 
 .context-row {
@@ -373,15 +1065,17 @@ textarea {
   padding: 0;
   border: none;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
   color: var(--text-2);
   font-size: 14px;
   cursor: pointer;
-  transition: background 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .tree-refresh-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--chip-hover-bg);
+  border-color: color-mix(in srgb, var(--chip-border) 84%, white 16%);
   color: var(--text-0);
 }
 
@@ -392,7 +1086,7 @@ textarea {
   font-size: 11px;
   font-family: "SF Mono", "Fira Code", monospace;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--tree-bg);
   padding: 6px;
 }
 
@@ -424,7 +1118,7 @@ textarea {
 }
 
 .tree-entry:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--tree-hover-bg);
   color: var(--text-0);
 }
 
@@ -454,14 +1148,14 @@ textarea {
 .plan-progress {
   padding: 8px 12px;
   border-radius: 12px;
-  background: rgba(255, 152, 56, 0.08);
-  border: 1px solid rgba(255, 152, 56, 0.16);
+  background: var(--progress-panel-bg);
+  border: 1px solid var(--progress-panel-border);
 }
 
 .plan-progress__bar {
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--progress-track-bg);
   overflow: hidden;
   margin-bottom: 4px;
 }
@@ -486,16 +1180,16 @@ textarea {
   align-items: center;
   padding: 14px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--status-bg);
+  border: 1px solid var(--status-border);
 }
 
 .status-dot {
   width: 12px;
   height: 12px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.25);
-  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.04);
+  background: var(--status-idle-dot);
+  box-shadow: 0 0 0 6px var(--status-idle-ring);
 }
 .status-dot.is-live {
   background: var(--ok);
@@ -521,8 +1215,8 @@ textarea {
 .chat-toolbar,
 .composer-shell {
   border-radius: 26px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--toolbar-bg);
+  border: 1px solid var(--toolbar-border);
 }
 
 .chat-toolbar {
@@ -560,14 +1254,14 @@ textarea {
 }
 
 .session-tab:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--chip-bg);
   color: var(--text-1);
 }
 
 .session-tab.is-active {
-  background: rgba(255, 152, 56, 0.14);
-  color: var(--accent-1);
-  border-color: rgba(255, 152, 56, 0.25);
+  background: var(--chip-hover-bg);
+  color: var(--accent-0);
+  border-color: var(--chip-border);
 }
 
 .session-tab__close {
@@ -602,8 +1296,8 @@ textarea {
   padding: 0 12px;
   border-radius: 999px;
   color: var(--text-0);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
 }
 
 .glass-badge--count {
@@ -623,7 +1317,9 @@ textarea {
   min-height: 0;
   overflow: auto;
   padding: 16px 4px 10px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 14px;
 }
 .chat-feed::-webkit-scrollbar,
@@ -637,22 +1333,29 @@ textarea {
 }
 
 .message-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   max-width: min(860px, 92%);
+  width: fit-content;
+  height: auto;
+  min-height: 0;
+  align-self: start;
   padding: 18px 20px;
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
   box-shadow: var(--shadow-md);
   white-space: pre-wrap;
   line-height: 1.68;
 }
 .message-card--assistant {
-  justify-self: start;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  align-self: flex-start;
+  background: var(--card-assistant-bg);
 }
 .message-card--user {
-  justify-self: end;
-  background: linear-gradient(180deg, rgba(255, 148, 56, 0.3), rgba(255, 122, 0, 0.2));
-  border-color: rgba(255, 152, 56, 0.42);
+  align-self: flex-end;
+  background: var(--card-user-bg);
+  border-color: var(--card-user-border);
 }
 .message-card__meta {
   display: flex;
@@ -665,19 +1368,21 @@ textarea {
 }
 .message-card__body {
   color: var(--text-0);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .message-card__body code {
   padding: 2px 6px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--code-bg);
   color: var(--accent-2);
 }
 .message-card__body pre {
   overflow: auto;
   padding: 14px;
   border-radius: 18px;
-  background: rgba(0, 0, 0, 0.36);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--code-bg);
+  border: 1px solid var(--panel-border);
 }
 .message-card__body-wrapper--collapsed {
   max-height: 420px;
@@ -711,8 +1416,8 @@ textarea {
   margin-top: 4px;
   padding: 6px;
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.03);
+  border-top: 1px solid var(--panel-border);
+  background: var(--chip-bg);
   color: var(--text-1);
   font-size: 11px;
   font-weight: 600;
@@ -722,7 +1427,7 @@ textarea {
 }
 
 .expand-output-btn:hover {
-  background: rgba(255, 152, 56, 0.12);
+  background: var(--chip-hover-bg);
   color: var(--text-0);
 }
 
@@ -774,14 +1479,14 @@ textarea {
   padding: 8px 12px;
   cursor: pointer;
   transition: background 80ms ease;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .mention-item:last-child { border-bottom: none; }
 
 .mention-item:hover,
 .mention-item.is-selected {
-  background: rgba(255, 152, 56, 0.16);
+  background: var(--chip-hover-bg);
 }
 
 .mention-item__icon {
@@ -819,8 +1524,8 @@ textarea {
   min-height: 96px;
   resize: vertical;
   color: var(--text-0);
-  background: rgba(8, 12, 18, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
   border-radius: 22px;
   padding: 16px 18px;
   outline: none;
@@ -829,8 +1534,18 @@ textarea {
 #composer-input:focus,
 .theme-select:focus,
 .settings-input:focus {
-  border-color: rgba(255, 152, 56, 0.95);
-  box-shadow: 0 0 0 4px rgba(255, 122, 0, 0.16);
+  border-color: color-mix(in srgb, var(--field-border) 78%, white 22%);
+  box-shadow: 0 0 0 4px var(--focus-ring);
+}
+
+.theme-select:disabled,
+.settings-input:disabled {
+  color: var(--field-disabled-text);
+  background: var(--field-disabled-bg);
+  border-color: color-mix(in srgb, var(--field-border) 60%, transparent 40%);
+  opacity: 1;
+  -webkit-text-fill-color: var(--field-disabled-text);
+  cursor: not-allowed;
 }
 .send-button {
   min-height: 56px;
@@ -857,11 +1572,11 @@ textarea {
   background: transparent;
 }
 .sessions-dialog::backdrop {
-  background: rgba(5, 8, 12, 0.72);
+  background: var(--dialog-backdrop);
   backdrop-filter: blur(10px);
 }
 .settings-dialog::backdrop {
-  background: rgba(5, 8, 12, 0.72);
+  background: var(--dialog-backdrop);
   backdrop-filter: blur(10px);
 }
 .sessions-dialog__panel {
@@ -930,14 +1645,14 @@ textarea {
   align-items: stretch;
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(8, 10, 14, 0.86);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .settings-input-group:focus-within {
-  border-color: rgba(255, 145, 56, 0.78);
-  box-shadow: 0 0 0 3px rgba(255, 132, 44, 0.18);
+  border-color: color-mix(in srgb, var(--field-border) 78%, white 22%);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .settings-input-group__input {
@@ -954,16 +1669,20 @@ textarea {
   min-width: 88px;
   padding: 0 16px;
   border: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(255, 145, 56, 0.28), rgba(255, 103, 29, 0.18));
-  color: var(--text-0);
+  border-left: 1px solid var(--field-border);
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
 }
 
 .settings-input-group__toggle:hover {
-  background: linear-gradient(180deg, rgba(255, 145, 56, 0.38), rgba(255, 103, 29, 0.26));
+  background: var(--button-secondary-hover-bg);
+}
+
+#browse-workspace-path {
+  min-width: 104px;
 }
 
 .settings-sections {
@@ -976,8 +1695,8 @@ textarea {
   gap: 14px;
   padding: 18px;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface-bg);
+  border: 1px solid var(--panel-border);
 }
 
 .settings-section__title {
@@ -1004,8 +1723,8 @@ textarea {
   padding: 0 14px;
   border-radius: 16px;
   color: var(--text-0);
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--status-bg);
+  border: 1px solid var(--status-border);
 }
 
 .settings-toggle {
@@ -1033,14 +1752,16 @@ textarea {
   padding: 0 14px;
   border-radius: 999px;
   color: var(--text-0);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
   cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .settings-chip-button:hover {
-  background: rgba(255, 137, 44, 0.18);
-  border-color: rgba(255, 162, 82, 0.7);
+  background: var(--chip-hover-bg);
+  border-color: color-mix(in srgb, var(--chip-border) 84%, white 16%);
+  transform: translateY(-1px);
 }
 
 .settings-empty {
@@ -1058,8 +1779,8 @@ textarea {
   gap: 18px;
   padding: 18px;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface-bg);
+  border: 1px solid var(--panel-border);
 }
 .session-item__meta {
   display: flex;
@@ -1070,7 +1791,7 @@ textarea {
 .session-chip {
   border-radius: 999px;
   padding: 4px 10px;
-  background: rgba(255, 122, 0, 0.18);
+  background: var(--chip-bg);
   color: var(--accent-2);
   font-size: 12px;
 }
@@ -1088,24 +1809,38 @@ textarea {
 }
 
 .command-palette::backdrop {
-  background: rgba(5, 8, 12, 0.6);
+  background: var(--dialog-backdrop);
   backdrop-filter: blur(4px);
 }
 
 .command-palette__panel {
   border-radius: 24px;
-  background: var(--bg-2);
-  border: 1px solid var(--line-1);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
   backdrop-filter: blur(24px);
+}
+
+button:focus-visible,
+.theme-select:focus-visible,
+.settings-input:focus-visible,
+#composer-input:focus-visible,
+.session-tab:focus-visible,
+.settings-chip-button:focus-visible,
+.dialog-close:focus-visible,
+.session-item__action:focus-visible,
+.icon-button:focus-visible,
+.menu-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 .command-search {
   width: 100%;
   padding: 16px 20px;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--panel-border);
   background: transparent;
   color: var(--text-0);
   font-size: 16px;
@@ -1145,7 +1880,7 @@ textarea {
 
 .command-item:hover,
 .command-item.is-selected {
-  background: rgba(255, 152, 56, 0.16);
+  background: var(--chip-hover-bg);
 }
 
 .command-item__shortcut {
@@ -1156,7 +1891,7 @@ textarea {
   font-size: 10px;
   font-weight: 700;
   text-align: center;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--chip-bg);
   color: var(--text-2);
   font-family: "SF Mono", monospace;
 }
@@ -1214,7 +1949,7 @@ textarea {
   flex: 1;
   height: 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--progress-track-bg);
   overflow: hidden;
   min-width: 40px;
 }
@@ -1274,9 +2009,9 @@ textarea {
   border-radius: 6px;
   font-size: 11px;
   font-weight: 700;
-  background: rgba(255, 152, 56, 0.18);
-  color: var(--accent-1);
-  border: 1px solid rgba(255, 152, 56, 0.2);
+  background: var(--badge-summary-bg);
+  color: var(--badge-summary-fg);
+  border: 1px solid var(--badge-summary-border);
 }
 
 /* ── Status tags ─────────────────────────────────────── */
@@ -1297,12 +2032,12 @@ textarea {
   vertical-align: middle;
 }
 
-.action-tag { background: rgba(255, 152, 56, 0.2); color: #ffb062; }
-.status-tag { background: rgba(99, 240, 162, 0.15); color: #63f0a2; }
-.error-tag { background: rgba(255, 107, 107, 0.18); color: #ff6b6b; }
-.warn-tag { background: rgba(255, 214, 77, 0.18); color: #ffd64d; }
-.info-tag { background: rgba(150, 197, 255, 0.15); color: #8dc6ff; }
-.backup-tag { background: rgba(200, 180, 255, 0.15); color: #c8b4ff; }
+.action-tag { background: var(--badge-action-bg); color: var(--badge-action-fg); }
+.status-tag { background: var(--badge-status-bg); color: var(--badge-status-fg); }
+.error-tag { background: var(--badge-error-bg); color: var(--badge-error-fg); }
+.warn-tag { background: var(--badge-warn-bg); color: var(--badge-warn-fg); }
+.info-tag { background: var(--badge-info-bg); color: var(--badge-info-fg); }
+.backup-tag { background: var(--badge-backup-bg); color: var(--badge-backup-fg); }
 
 .status-icon { font-size: 14px; vertical-align: -1px; }
 
@@ -1311,8 +2046,8 @@ textarea {
   position: relative;
   margin: 10px 0;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.36);
+  border: 1px solid var(--code-border);
+  background: var(--code-bg);
   overflow: hidden;
 }
 
@@ -1326,7 +2061,7 @@ textarea {
   font-weight: 700;
   text-transform: uppercase;
   color: var(--text-2);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--code-badge-bg);
   letter-spacing: 0.06em;
 }
 
@@ -1353,18 +2088,18 @@ textarea {
 }
 
 /* ── Syntax highlighting ─────────────────────────────── */
-.hl-keyword { color: #ff9d5c; font-weight: 700; }
-.hl-comment { color: #6a9955; font-style: italic; }
-.hl-string  { color: #6ecb8c; }
-.hl-number  { color: #b5cea8; }
-.hl-tag     { color: #ffd64d; }
+.hl-keyword { color: var(--syntax-keyword); font-weight: 700; }
+.hl-comment { color: var(--syntax-comment); font-style: italic; }
+.hl-string  { color: var(--syntax-string); }
+.hl-number  { color: var(--syntax-number); }
+.hl-tag     { color: var(--syntax-tag); }
 
 .inline-code {
   padding: 1px 5px;
   border-radius: 4px;
   font-family: "SF Mono", "Fira Code", monospace;
   font-size: 0.92em;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--code-bg);
   color: var(--accent-2);
 }
 
@@ -1373,7 +2108,7 @@ textarea {
   margin: 0 4px 8px;
   border-radius: 20px;
   border: 1px solid var(--line-0);
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--tree-bg);
   overflow: hidden;
 }
 
@@ -1382,8 +2117,8 @@ textarea {
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom: 1px solid var(--line-0);
+  background: var(--surface-bg);
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .changes-panel__title {
@@ -1398,9 +2133,9 @@ textarea {
   min-height: 30px;
   padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid var(--line-1);
-  background: var(--surface-bg);
-  color: var(--text-0);
+  border: 1px solid var(--button-secondary-border);
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -1409,7 +2144,7 @@ textarea {
 
 .changes-panel__btn:hover {
   transform: translateY(-1px);
-  background: linear-gradient(180deg, rgba(255, 137, 44, 0.22), rgba(255, 255, 255, 0.06));
+  background: var(--button-secondary-hover-bg);
 }
 
 .changes-list {
@@ -1435,8 +2170,8 @@ textarea {
   align-items: center;
   padding: 6px 10px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--surface-bg);
+  border: 1px solid var(--panel-border);
   font-size: 12px;
 }
 
@@ -1459,8 +2194,8 @@ textarea {
   min-height: 24px;
   padding: 0 8px;
   border-radius: 6px;
-  border: 1px solid var(--line-0);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
   color: var(--text-0);
   font-size: 10px;
   font-weight: 600;
@@ -1470,8 +2205,8 @@ textarea {
 }
 
 .change-item__btn:hover {
-  background: rgba(255, 137, 44, 0.18);
-  border-color: var(--line-1);
+  background: var(--chip-hover-bg);
+  border-color: color-mix(in srgb, var(--chip-border) 84%, white 16%);
 }
 
 .change-item__btn--revert {
@@ -1498,7 +2233,7 @@ textarea {
   font-family: "SF Mono", "Fira Code", monospace;
   font-size: 11px;
   line-height: 1.55;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--code-bg);
 }
 
 .diff-view::-webkit-scrollbar { width: 8px; }
@@ -1533,13 +2268,13 @@ textarea {
 }
 
 .diff-line--add {
-  background: rgba(99, 240, 162, 0.1);
-  color: #63f0a2;
+  background: var(--diff-add-bg);
+  color: var(--diff-add-fg);
 }
 
 .diff-line--remove {
-  background: rgba(255, 107, 107, 0.1);
-  color: #ff6b6b;
+  background: var(--diff-remove-bg);
+  color: var(--diff-remove-fg);
 }
 
 .diff-line--header {

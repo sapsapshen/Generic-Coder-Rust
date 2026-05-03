@@ -5,9 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Generic Coder</title>
     <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+    <script>
+      try {
+        const theme = window.localStorage.getItem('generic-coder-theme');
+        if (theme) {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch {}
+    </script>
     <link rel="stylesheet" href="/static/app.css" />
   </head>
-  <body data-theme="solarflare">
+  <body>
     <div class="app-shell">
       <aside class="nav-panel">
         <div class="brand-block">
@@ -175,7 +183,10 @@
               </label>
               <label class="settings-field settings-field--full">
                 <span data-i18n="workspacePath">工作目录</span>
-                <input id="workspace-path-input" class="settings-input" type="text" />
+                <div class="settings-input-group">
+                  <input id="workspace-path-input" class="settings-input settings-input-group__input" type="text" />
+                  <button type="button" id="browse-workspace-path" class="settings-input-group__toggle" data-i18n="browseFolder">浏览</button>
+                </div>
               </label>
             </div>
             <div class="settings-actions">

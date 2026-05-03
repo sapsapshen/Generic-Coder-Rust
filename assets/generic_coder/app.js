@@ -29,6 +29,9 @@ const state = {
   taskPlaceholderId: null,
   isRunning: false,
   locale: 'zh',
+  workspaceNameDirty: false,
+  workspaceNameAutoFilled: false,
+  workspacePickerToken: '',
   models: [],
   currentModelIndex: 0,
   llmForm: { ...DEFAULT_LLM_FORM },
@@ -36,36 +39,85 @@ const state = {
   remote: { form: { ...DEFAULT_REMOTE_FORM }, configs: [], active_connections: [], connected: false },
 };
 
-const THEME_OPTIONS = ['solarflare', 'graphite', 'neonwave', 'daybreak', 'ember'];
+const THEME_OPTIONS = ['solarflare', 'graphite', 'neonwave', 'daybreak', 'ember', 'aurora', 'obsidian', 'paperink', 'verdant', 'amethyst'];
 const LANGUAGE_OPTIONS = ['zh', 'en', 'es'];
 const SESSION_TYPE_OPTIONS = ['native_oai', 'oai', 'native_claude', 'claude'];
-const PROTOCOL_PRESET_OPTIONS = ['custom', 'deepseek', 'openai_chat', 'openai_responses', 'anthropic_messages', 'openrouter', 'moonshot_oai', 'kimi_coding', 'minimax_oai', 'zhipu_anthropic'];
-const MODEL_PRESET_OPTIONS = ['custom', 'deepseek_chat', 'deepseek_reasoner', 'gpt_5_4', 'gpt_4_1', 'claude_sonnet_4', 'claude_opus_4_7', 'kimi_for_coding', 'minimax_m27', 'glm_5_1', 'openrouter_claude'];
+const PROTOCOL_PRESET_OPTIONS = [
+  'custom',
+  'deepseek',
+  'qwen_dashscope',
+  'openai_chat',
+  'openai_responses',
+  'anthropic_messages',
+  'openrouter',
+  'moonshot_oai',
+  'minimax_oai',
+  'doubao_ark',
+  'hunyuan_oai',
+  'baidu_qianfan',
+  'zhipu_anthropic',
+];
+const MODEL_PRESET_OPTIONS = [
+  'custom',
+  'deepseek_v4_pro',
+  'deepseek_v4_flash',
+  'qwen_max_latest',
+  'qwen_plus_latest',
+  'qwen3_coder_plus',
+  'qwen3_coder_flash',
+  'kimi_k26',
+  'kimi_k25',
+  'minimax_m27',
+  'minimax_m1',
+  'glm_5_1',
+  'doubao_15_pro_32k',
+  'hunyuan_turbos_latest',
+  'ernie_45_turbo_128k',
+  'mimo_v25',
+  'gpt_5_4',
+  'gpt_4_1',
+  'claude_sonnet_4',
+  'claude_opus_4_7',
+  'openrouter_claude',
+];
 
 const PROTOCOL_PRESETS = {
   custom: { sessionType: 'native_oai', api_mode: 'chat_completions', provider: '', apibase: '' },
   deepseek: { sessionType: 'native_oai', api_mode: 'chat_completions', provider: 'DeepSeek', apibase: 'https://api.deepseek.com/v1' },
+  qwen_dashscope: { sessionType: 'native_oai', api_mode: 'chat_completions', provider: 'Qwen', apibase: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
   openai_chat: { sessionType: 'native_oai', api_mode: 'chat_completions', provider: 'OpenAI', apibase: 'https://api.openai.com/v1' },
   openai_responses: { sessionType: 'native_oai', api_mode: 'responses', provider: 'OpenAI', apibase: 'https://api.openai.com/v1' },
   anthropic_messages: { sessionType: 'native_claude', api_mode: 'chat_completions', provider: 'Anthropic', apibase: 'https://api.anthropic.com' },
   openrouter: { sessionType: 'oai', api_mode: 'chat_completions', provider: 'OpenRouter', apibase: 'https://openrouter.ai/api/v1' },
-  moonshot_oai: { sessionType: 'oai', api_mode: 'chat_completions', provider: 'Moonshot', apibase: 'https://api.moonshot.cn/v1' },
-  kimi_coding: { sessionType: 'native_claude', api_mode: 'chat_completions', provider: 'Moonshot', apibase: 'https://api.kimi.com/coding' },
+  moonshot_oai: { sessionType: 'oai', api_mode: 'chat_completions', provider: 'Kimi', apibase: 'https://api.moonshot.ai/v1' },
   minimax_oai: { sessionType: 'oai', api_mode: 'chat_completions', provider: 'MiniMax', apibase: 'https://api.minimaxi.com/v1' },
+  doubao_ark: { sessionType: 'oai', api_mode: 'chat_completions', provider: 'Doubao', apibase: 'https://ark.cn-beijing.volces.com/api/v3' },
+  hunyuan_oai: { sessionType: 'oai', api_mode: 'chat_completions', provider: 'Hunyuan', apibase: 'https://api.hunyuan.cloud.tencent.com/v1' },
+  baidu_qianfan: { sessionType: 'oai', api_mode: 'chat_completions', provider: 'ERNIE', apibase: 'https://qianfan.baidubce.com/v2' },
   zhipu_anthropic: { sessionType: 'native_claude', api_mode: 'chat_completions', provider: 'Zhipu', apibase: 'https://open.bigmodel.cn/api/anthropic' },
 };
 
 const MODEL_PRESETS = {
   custom: {},
-  deepseek_chat: { provider: 'DeepSeek', model: 'deepseek-chat', displayName: 'deepseek-chat', protocolPreset: 'deepseek' },
-  deepseek_reasoner: { provider: 'DeepSeek', model: 'deepseek-reasoner', displayName: 'deepseek-reasoner', protocolPreset: 'deepseek' },
+  deepseek_v4_pro: { provider: 'DeepSeek', model: 'deepseek-v4-pro', displayName: 'deepseek-v4-pro', protocolPreset: 'deepseek' },
+  deepseek_v4_flash: { provider: 'DeepSeek', model: 'deepseek-v4-flash', displayName: 'deepseek-v4-flash', protocolPreset: 'deepseek' },
+  qwen_max_latest: { provider: 'Qwen', model: 'qwen-max-latest', displayName: 'qwen-max-latest', protocolPreset: 'qwen_dashscope' },
+  qwen_plus_latest: { provider: 'Qwen', model: 'qwen-plus-latest', displayName: 'qwen-plus-latest', protocolPreset: 'qwen_dashscope' },
+  qwen3_coder_plus: { provider: 'Qwen', model: 'qwen3-coder-plus', displayName: 'qwen3-coder-plus', protocolPreset: 'qwen_dashscope' },
+  qwen3_coder_flash: { provider: 'Qwen', model: 'qwen3-coder-flash', displayName: 'qwen3-coder-flash', protocolPreset: 'qwen_dashscope' },
+  kimi_k26: { provider: 'Kimi', model: 'kimi-k2.6', displayName: 'kimi-k2.6', protocolPreset: 'moonshot_oai' },
+  kimi_k25: { provider: 'Kimi', model: 'kimi-k2.5', displayName: 'kimi-k2.5', protocolPreset: 'moonshot_oai' },
   gpt_5_4: { provider: 'OpenAI', model: 'gpt-5.4', displayName: 'gpt-5.4', protocolPreset: 'openai_responses' },
   gpt_4_1: { provider: 'OpenAI', model: 'gpt-4.1', displayName: 'gpt-4.1', protocolPreset: 'openai_chat' },
   claude_sonnet_4: { provider: 'Anthropic', model: 'claude-sonnet-4-20250514', displayName: 'claude-sonnet-4', protocolPreset: 'anthropic_messages' },
   claude_opus_4_7: { provider: 'Anthropic', model: 'claude-opus-4-7', displayName: 'claude-opus-4-7', protocolPreset: 'anthropic_messages' },
-  kimi_for_coding: { provider: 'Moonshot', model: 'kimi-for-coding', displayName: 'kimi-coding', protocolPreset: 'kimi_coding' },
   minimax_m27: { provider: 'MiniMax', model: 'MiniMax-M2.7', displayName: 'MiniMax-M2.7', protocolPreset: 'minimax_oai' },
+  minimax_m1: { provider: 'MiniMax', model: 'MiniMax-M1', displayName: 'MiniMax-M1', protocolPreset: 'minimax_oai' },
   glm_5_1: { provider: 'Zhipu', model: 'glm-5.1', displayName: 'glm-5.1', protocolPreset: 'zhipu_anthropic' },
+  doubao_15_pro_32k: { provider: 'Doubao', model: 'doubao-1.5-pro-32k', displayName: 'doubao-1.5-pro-32k', protocolPreset: 'doubao_ark' },
+  hunyuan_turbos_latest: { provider: 'Hunyuan', model: 'hunyuan-turbos-latest', displayName: 'hunyuan-turbos-latest', protocolPreset: 'hunyuan_oai' },
+  ernie_45_turbo_128k: { provider: 'ERNIE', model: 'ernie-4.5-turbo-128k', displayName: 'ernie-4.5-turbo-128k', protocolPreset: 'baidu_qianfan' },
+  mimo_v25: { provider: 'Xiaomi', model: 'mimo-v2.5', displayName: 'mimo-v2.5' },
   openrouter_claude: { provider: 'OpenRouter', model: 'anthropic/claude-opus-4-7', displayName: 'openrouter-claude', protocolPreset: 'openrouter' },
 };
 
@@ -107,9 +159,11 @@ const I18N = {
     workspaceSettings: '本地工作区',
     workspaceName: '工作区名称',
     workspacePath: '工作目录',
+    browseFolder: '浏览',
     applyWorkspace: '应用工作区',
     workspaceSaveOk: '工作区已切换',
     workspaceSaveError: '工作区切换失败',
+    workspacePickError: '图形选择目录失败',
     currentWorkspace: '当前工作区',
     noWorkspace: '未设置本地工作区',
     recentWorkspaces: '最近工作区',
@@ -175,9 +229,11 @@ const I18N = {
     workspaceSettings: 'Local workspace',
     workspaceName: 'Workspace name',
     workspacePath: 'Workspace path',
+    browseFolder: 'Browse',
     applyWorkspace: 'Apply workspace',
     workspaceSaveOk: 'Workspace switched',
     workspaceSaveError: 'Failed to switch workspace',
+    workspacePickError: 'Failed to choose folder',
     currentWorkspace: 'Current workspace',
     noWorkspace: 'No local workspace selected',
     recentWorkspaces: 'Recent workspaces',
@@ -243,9 +299,11 @@ const I18N = {
     workspaceSettings: 'Espacio de trabajo local',
     workspaceName: 'Nombre del espacio',
     workspacePath: 'Ruta del espacio',
+    browseFolder: 'Examinar',
     applyWorkspace: 'Aplicar espacio',
     workspaceSaveOk: 'Espacio de trabajo cambiado',
     workspaceSaveError: 'No se pudo cambiar el espacio',
+    workspacePickError: 'No se pudo elegir la carpeta',
     currentWorkspace: 'Espacio actual',
     noWorkspace: 'No hay espacio local seleccionado',
     recentWorkspaces: 'Espacios recientes',
@@ -277,9 +335,9 @@ const I18N = {
 };
 
 const THEME_LABELS = {
-  zh: { solarflare: 'Solar Flare', graphite: 'Liquid Graphite', neonwave: 'Neon Wave', daybreak: 'Daybreak', ember: 'Ember Core' },
-  en: { solarflare: 'Solar Flare', graphite: 'Liquid Graphite', neonwave: 'Neon Wave', daybreak: 'Daybreak', ember: 'Ember Core' },
-  es: { solarflare: 'Llamarada Solar', graphite: 'Grafito Líquido', neonwave: 'Ola Neón', daybreak: 'Amanecer', ember: 'Núcleo Ember' },
+  zh: { solarflare: 'Solar Flare', graphite: 'Liquid Graphite', neonwave: 'Neon Wave', daybreak: 'Daybreak', ember: 'Ember Core', aurora: 'Aurora Flux', obsidian: 'Obsidian Mist', paperink: 'Paper Ink', verdant: 'Verdant Calm', amethyst: 'Amethyst Night' },
+  en: { solarflare: 'Solar Flare', graphite: 'Liquid Graphite', neonwave: 'Neon Wave', daybreak: 'Daybreak', ember: 'Ember Core', aurora: 'Aurora Flux', obsidian: 'Obsidian Mist', paperink: 'Paper Ink', verdant: 'Verdant Calm', amethyst: 'Amethyst Night' },
+  es: { solarflare: 'Llamarada Solar', graphite: 'Grafito Líquido', neonwave: 'Ola Neón', daybreak: 'Amanecer', ember: 'Núcleo Ember', aurora: 'Flujo Aurora', obsidian: 'Niebla Obsidiana', paperink: 'Tinta de Papel', verdant: 'Calma Verde', amethyst: 'Noche Amatista' },
 };
 
 const LANGUAGE_LABELS = {
@@ -298,37 +356,46 @@ const PROTOCOL_PRESET_LABELS = {
   zh: {
     custom: '手动填写',
     deepseek: 'DeepSeek OAI',
+    qwen_dashscope: 'Qwen / DashScope（直连 Key）',
     openai_chat: 'OpenAI Chat Completions',
     openai_responses: 'OpenAI Responses',
     anthropic_messages: 'Anthropic Messages',
     openrouter: 'OpenRouter OAI',
-    moonshot_oai: 'Moonshot OAI',
-    kimi_coding: 'Kimi Coding',
+    moonshot_oai: 'Kimi / Moonshot API',
     minimax_oai: 'MiniMax OAI',
+    doubao_ark: 'Doubao / Ark API',
+    hunyuan_oai: 'Tencent Hunyuan OAI',
+    baidu_qianfan: 'Baidu Qianfan OAI',
     zhipu_anthropic: '智谱 Anthropic 兼容',
   },
   en: {
     custom: 'Manual entry',
     deepseek: 'DeepSeek OAI',
+    qwen_dashscope: 'Qwen / DashScope (Direct key)',
     openai_chat: 'OpenAI Chat Completions',
     openai_responses: 'OpenAI Responses',
     anthropic_messages: 'Anthropic Messages',
     openrouter: 'OpenRouter OAI',
-    moonshot_oai: 'Moonshot OAI',
-    kimi_coding: 'Kimi Coding',
+    moonshot_oai: 'Kimi / Moonshot API',
     minimax_oai: 'MiniMax OAI',
+    doubao_ark: 'Doubao / Ark API',
+    hunyuan_oai: 'Tencent Hunyuan OAI',
+    baidu_qianfan: 'Baidu Qianfan OAI',
     zhipu_anthropic: 'Zhipu Anthropic compatible',
   },
   es: {
     custom: 'Manual',
     deepseek: 'DeepSeek OAI',
+    qwen_dashscope: 'Qwen / DashScope (clave directa)',
     openai_chat: 'OpenAI Chat Completions',
     openai_responses: 'OpenAI Responses',
     anthropic_messages: 'Anthropic Messages',
     openrouter: 'OpenRouter OAI',
-    moonshot_oai: 'Moonshot OAI',
-    kimi_coding: 'Kimi Coding',
+    moonshot_oai: 'Kimi / Moonshot API',
     minimax_oai: 'MiniMax OAI',
+    doubao_ark: 'Doubao / Ark API',
+    hunyuan_oai: 'Tencent Hunyuan OAI',
+    baidu_qianfan: 'Baidu Qianfan OAI',
     zhipu_anthropic: 'Zhipu Anthropic compatible',
   },
 };
@@ -336,41 +403,71 @@ const PROTOCOL_PRESET_LABELS = {
 const MODEL_PRESET_LABELS = {
   zh: {
     custom: '手动填写',
-    deepseek_chat: 'DeepSeek Chat',
-    deepseek_reasoner: 'DeepSeek Reasoner',
+    deepseek_v4_pro: 'DeepSeek V4 Pro',
+    deepseek_v4_flash: 'DeepSeek V4 Flash',
+    qwen_max_latest: 'Qwen Max Latest',
+    qwen_plus_latest: 'Qwen Plus Latest',
+    qwen3_coder_plus: 'Qwen3 Coder Plus',
+    qwen3_coder_flash: 'Qwen3 Coder Flash',
+    kimi_k26: 'Kimi K2.6',
+    kimi_k25: 'Kimi K2.5',
     gpt_5_4: 'GPT-5.4',
     gpt_4_1: 'GPT-4.1',
     claude_sonnet_4: 'Claude Sonnet 4',
     claude_opus_4_7: 'Claude Opus 4.7',
-    kimi_for_coding: 'Kimi for Coding',
     minimax_m27: 'MiniMax M2.7',
+    minimax_m1: 'MiniMax M1',
     glm_5_1: 'GLM 5.1',
+    doubao_15_pro_32k: 'Doubao 1.5 Pro 32K',
+    hunyuan_turbos_latest: 'Hunyuan Turbo S Latest',
+    ernie_45_turbo_128k: 'ERNIE 4.5 Turbo 128K',
+    mimo_v25: 'MiMo v2.5',
     openrouter_claude: 'OpenRouter Claude Opus',
   },
   en: {
     custom: 'Manual entry',
-    deepseek_chat: 'DeepSeek Chat',
-    deepseek_reasoner: 'DeepSeek Reasoner',
+    deepseek_v4_pro: 'DeepSeek V4 Pro',
+    deepseek_v4_flash: 'DeepSeek V4 Flash',
+    qwen_max_latest: 'Qwen Max Latest',
+    qwen_plus_latest: 'Qwen Plus Latest',
+    qwen3_coder_plus: 'Qwen3 Coder Plus',
+    qwen3_coder_flash: 'Qwen3 Coder Flash',
+    kimi_k26: 'Kimi K2.6',
+    kimi_k25: 'Kimi K2.5',
     gpt_5_4: 'GPT-5.4',
     gpt_4_1: 'GPT-4.1',
     claude_sonnet_4: 'Claude Sonnet 4',
     claude_opus_4_7: 'Claude Opus 4.7',
-    kimi_for_coding: 'Kimi for Coding',
     minimax_m27: 'MiniMax M2.7',
+    minimax_m1: 'MiniMax M1',
     glm_5_1: 'GLM 5.1',
+    doubao_15_pro_32k: 'Doubao 1.5 Pro 32K',
+    hunyuan_turbos_latest: 'Hunyuan Turbo S Latest',
+    ernie_45_turbo_128k: 'ERNIE 4.5 Turbo 128K',
+    mimo_v25: 'MiMo v2.5',
     openrouter_claude: 'OpenRouter Claude Opus',
   },
   es: {
     custom: 'Manual',
-    deepseek_chat: 'DeepSeek Chat',
-    deepseek_reasoner: 'DeepSeek Reasoner',
+    deepseek_v4_pro: 'DeepSeek V4 Pro',
+    deepseek_v4_flash: 'DeepSeek V4 Flash',
+    qwen_max_latest: 'Qwen Max Latest',
+    qwen_plus_latest: 'Qwen Plus Latest',
+    qwen3_coder_plus: 'Qwen3 Coder Plus',
+    qwen3_coder_flash: 'Qwen3 Coder Flash',
+    kimi_k26: 'Kimi K2.6',
+    kimi_k25: 'Kimi K2.5',
     gpt_5_4: 'GPT-5.4',
     gpt_4_1: 'GPT-4.1',
     claude_sonnet_4: 'Claude Sonnet 4',
     claude_opus_4_7: 'Claude Opus 4.7',
-    kimi_for_coding: 'Kimi for Coding',
     minimax_m27: 'MiniMax M2.7',
+    minimax_m1: 'MiniMax M1',
     glm_5_1: 'GLM 5.1',
+    doubao_15_pro_32k: 'Doubao 1.5 Pro 32K',
+    hunyuan_turbos_latest: 'Hunyuan Turbo S Latest',
+    ernie_45_turbo_128k: 'ERNIE 4.5 Turbo 128K',
+    mimo_v25: 'MiMo v2.5',
     openrouter_claude: 'OpenRouter Claude Opus',
   },
 };
@@ -408,6 +505,7 @@ const saveLlmButton = document.getElementById('save-llm-settings');
 const workspaceStatus = document.getElementById('workspace-status');
 const workspaceNameInput = document.getElementById('workspace-name-input');
 const workspacePathInput = document.getElementById('workspace-path-input');
+const browseWorkspacePathButton = document.getElementById('browse-workspace-path');
 const saveWorkspaceButton = document.getElementById('save-workspace-settings');
 const workspaceList = document.getElementById('workspace-list');
 
@@ -422,6 +520,21 @@ const remoteKeyPathInput = document.getElementById('remote-key-path-input');
 const remoteCwdInput = document.getElementById('remote-cwd-input');
 const connectRemoteButton = document.getElementById('connect-remote-button');
 const remoteConfigList = document.getElementById('remote-config-list');
+const WORKSPACE_PICKER_TOKEN_KEY = 'generic-coder-workspace-picker-token';
+
+function hydrateWorkspacePickerToken() {
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+  const params = new URLSearchParams(hash);
+  const tokenFromHash = params.get('picker_token');
+  if (tokenFromHash) {
+    window.sessionStorage.setItem(WORKSPACE_PICKER_TOKEN_KEY, tokenFromHash);
+    params.delete('picker_token');
+    const nextHash = params.toString();
+    const nextUrl = `${window.location.pathname}${window.location.search}${nextHash ? `#${nextHash}` : ''}`;
+    window.history.replaceState(null, '', nextUrl);
+  }
+  state.workspacePickerToken = window.sessionStorage.getItem(WORKSPACE_PICKER_TOKEN_KEY) || '';
+}
 
 function t(key) {
   return I18N[state.locale][key];
@@ -469,14 +582,14 @@ function renderSessionTypeOptions() {
 function inferProtocolPreset(form) {
   const currentApiMode = String(form.api_mode || 'chat_completions').toLowerCase();
   const currentSessionType = String(form.session_type || 'native_oai').toLowerCase();
-  const currentBaseUrl = String(form.apibase || '').trim().toLowerCase();
+  const currentBaseUrl = canonicalizeBaseUrl(form.apibase);
   for (const key of PROTOCOL_PRESET_OPTIONS) {
     if (key === 'custom') continue;
     const preset = PROTOCOL_PRESETS[key];
     if (!preset) continue;
     if (preset.sessionType !== currentSessionType) continue;
     if ((preset.api_mode || 'chat_completions') !== currentApiMode) continue;
-    if ((preset.apibase || '').trim().toLowerCase() !== currentBaseUrl) continue;
+    if (canonicalizeBaseUrl(preset.apibase) !== currentBaseUrl) continue;
     return key;
   }
   return 'custom';
@@ -484,13 +597,57 @@ function inferProtocolPreset(form) {
 
 function inferModelPreset(form) {
   const currentModel = String(form.model || '').trim().toLowerCase();
+  const currentProvider = String(form.provider || '').trim().toLowerCase();
+  const currentSessionType = String(form.session_type || 'native_oai').trim().toLowerCase();
+  const currentProtocolPreset = inferProtocolPreset(form);
+  if (currentModel === 'deepseek-chat' || currentModel === 'deepseek-reasoner') {
+    return 'custom';
+  }
+  let fallback = 'custom';
   for (const key of MODEL_PRESET_OPTIONS) {
     if (key === 'custom') continue;
-    if ((MODEL_PRESETS[key]?.model || '').trim().toLowerCase() === currentModel) {
+    const preset = MODEL_PRESETS[key];
+    if ((preset?.model || '').trim().toLowerCase() !== currentModel) {
+      continue;
+    }
+    const presetSessionType = preset?.protocolPreset
+      ? PROTOCOL_PRESETS[preset.protocolPreset]?.sessionType
+      : '';
+    if (presetSessionType && presetSessionType !== currentSessionType) {
+      continue;
+    }
+    if (preset?.protocolPreset && preset.protocolPreset === currentProtocolPreset) {
       return key;
     }
+    if (preset?.provider && preset.provider.trim().toLowerCase() === currentProvider) {
+      return key;
+    }
+    if (fallback === 'custom') fallback = key;
   }
-  return 'custom';
+  return fallback;
+}
+
+function canonicalizeBaseUrl(url) {
+  const normalized = String(url || '').trim().toLowerCase().replace(/\/+$/, '');
+  if (normalized === 'https://api.moonshot.cn/v1') {
+    return 'https://api.moonshot.ai/v1';
+  }
+  return normalized;
+}
+
+function hydrateLlmFormMetadata() {
+  state.llmForm.protocol_preset = state.llmForm.protocol_preset || inferProtocolPreset(state.llmForm);
+  state.llmForm.model_preset = state.llmForm.model_preset || inferModelPreset(state.llmForm);
+  if (!state.llmForm.provider) {
+    state.llmForm.provider = MODEL_PRESETS[state.llmForm.model_preset]?.provider
+      || PROTOCOL_PRESETS[state.llmForm.protocol_preset]?.provider
+      || '';
+  }
+  if (!state.llmForm.name) {
+    state.llmForm.name = MODEL_PRESETS[state.llmForm.model_preset]?.displayName
+      || state.llmForm.model
+      || '';
+  }
 }
 
 function renderProtocolPresetOptions() {
@@ -516,9 +673,26 @@ function syncPresetSelectionsFromFields() {
     api_mode: state.llmForm.api_mode || 'chat_completions',
     apibase: baseUrlInput.value.trim(),
   });
-  state.llmForm.model_preset = inferModelPreset({ model: modelNameInput.value.trim() });
+  state.llmForm.model_preset = inferModelPreset({
+    session_type: sessionTypeSelect.value,
+    api_mode: state.llmForm.api_mode || 'chat_completions',
+    provider: providerInput.value.trim(),
+    apibase: baseUrlInput.value.trim(),
+    model: modelNameInput.value.trim(),
+  });
   renderProtocolPresetOptions();
   renderModelPresetOptions();
+}
+
+function markManualProtocolEntry() {
+  state.llmForm.protocol_preset = 'custom';
+  state.llmForm.api_mode = state.llmForm.api_mode || 'chat_completions';
+  protocolPresetSelect.value = 'custom';
+}
+
+function markManualModelEntry() {
+  state.llmForm.model_preset = 'custom';
+  modelPresetSelect.value = 'custom';
 }
 
 function applyProtocolPreset(presetKey) {
@@ -563,8 +737,7 @@ function mergeRemoteState(remote) {
 
 function hydrateSettings(data) {
   state.llmForm = { ...DEFAULT_LLM_FORM, ...(data.llm_form || {}) };
-  state.llmForm.protocol_preset = state.llmForm.protocol_preset || inferProtocolPreset(state.llmForm);
-  state.llmForm.model_preset = inferModelPreset(state.llmForm);
+  hydrateLlmFormMetadata();
   state.workspace = {
     active: data.workspace?.active || null,
     workspaces: data.workspace?.workspaces || [],
@@ -604,6 +777,18 @@ function renderWorkspaceChoices() {
   workspaceList.innerHTML = entries.map((item) => `<button type="button" class="settings-chip-button" data-workspace-path="${escapeHtml(item.path)}" data-workspace-name="${escapeHtml(item.name)}">${escapeHtml(item.label)}</button>`).join('');
 }
 
+function inferWorkspaceNameFromPath(path) {
+  if (!path) return '';
+  const normalized = String(path).replace(/[\\/]+$/, '');
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : normalized;
+}
+
+function shouldAutofillWorkspaceName(previousPath) {
+  const currentName = workspaceNameInput.value.trim();
+  return !currentName || state.workspaceNameAutoFilled;
+}
+
 function renderRemoteChoices() {
   const configs = state.remote.configs || [];
   if (!configs.length) {
@@ -634,6 +819,8 @@ function renderSettingsState() {
 
   workspaceNameInput.value = state.workspace.active?.name || '';
   workspacePathInput.value = state.workspace.active?.path || '';
+  state.workspaceNameDirty = false;
+  state.workspaceNameAutoFilled = false;
   workspaceStatus.textContent = state.workspace.active?.path ? `${t('currentWorkspace')}: ${state.workspace.active.path}` : t('noWorkspace');
   renderWorkspaceChoices();
 
@@ -889,6 +1076,7 @@ function showToast(message) {
 
 function setTheme(theme, persist = true) {
   state.theme = theme;
+  document.documentElement.dataset.theme = theme;
   document.body.dataset.theme = theme;
   themePill.textContent = THEME_LABELS[state.locale][theme] || theme;
   languagePill.textContent = I18N[state.locale].languageName;
@@ -898,6 +1086,11 @@ function setTheme(theme, persist = true) {
 }
 
 async function loadBootstrap() {
+  hydrateWorkspacePickerToken();
+  const storedTheme = window.localStorage.getItem('generic-coder-theme');
+  if (THEME_OPTIONS.includes(storedTheme)) {
+    setTheme(storedTheme, false);
+  }
   const res = await fetch('/api/bootstrap');
   const data = await res.json();
   state.messages = data.messages || [];
@@ -906,7 +1099,6 @@ async function loadBootstrap() {
   if (data.llm_form || data.workspace || data.remote) {
     hydrateSettings(data);
   }
-  const storedTheme = window.localStorage.getItem('generic-coder-theme');
   const resolvedTheme = THEME_OPTIONS.includes(storedTheme) ? storedTheme : (data.theme || 'solarflare');
   setTheme(resolvedTheme, false);
   setRunning(Boolean(data.is_running));
@@ -975,10 +1167,14 @@ function updateLanguage(event) {
 async function saveLlmConfig() {
   const protocolPreset = protocolPresetSelect.value || 'custom';
   const preset = PROTOCOL_PRESETS[protocolPreset] || PROTOCOL_PRESETS.custom;
+  const apiMode = protocolPreset === 'custom'
+    ? (state.llmForm.api_mode || 'chat_completions')
+    : (preset.api_mode || 'chat_completions');
   const payload = {
+    entry_key: state.llmForm.entry_key || '',
     session_type: sessionTypeSelect.value,
     protocol_preset: protocolPreset,
-    api_mode: preset.api_mode || 'chat_completions',
+    api_mode: apiMode,
     provider: providerInput.value.trim(),
     name: displayNameInput.value.trim(),
     model: modelNameInput.value.trim(),
@@ -1023,6 +1219,39 @@ async function saveWorkspace() {
   renderSettingsState();
   loadWorkspaceTree();
   showToast(t('workspaceSaveOk'));
+}
+
+async function browseWorkspacePath() {
+  try {
+    if (!state.workspacePickerToken) {
+      showToast(t('workspacePickError'));
+      return;
+    }
+    const previousPath = workspacePathInput.value.trim();
+    const res = await fetch('/api/workspace/pick', {
+      method: 'POST',
+      headers: {
+        'X-Generic-Coder-UI': '1',
+        'X-Generic-Coder-Picker-Token': state.workspacePickerToken,
+      },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || t('workspacePickError'));
+      return;
+    }
+    if (!data.path) {
+      return;
+    }
+    workspacePathInput.value = data.path;
+    if (shouldAutofillWorkspaceName(previousPath)) {
+      workspaceNameInput.value = inferWorkspaceNameFromPath(data.path);
+      state.workspaceNameDirty = false;
+      state.workspaceNameAutoFilled = true;
+    }
+  } catch (error) {
+    showToast(`${t('workspacePickError')}: ${error.message}`);
+  }
 }
 
 async function connectRemote() {
@@ -1792,16 +2021,31 @@ languageSelect.addEventListener('change', updateLanguage);
 modelSelect.addEventListener('change', updateModel);
 protocolPresetSelect.addEventListener('change', (event) => applyProtocolPreset(event.target.value));
 modelPresetSelect.addEventListener('change', (event) => applyModelPreset(event.target.value));
-sessionTypeSelect.addEventListener('change', syncPresetSelectionsFromFields);
-providerInput.addEventListener('input', syncPresetSelectionsFromFields);
-modelNameInput.addEventListener('input', syncPresetSelectionsFromFields);
-baseUrlInput.addEventListener('input', syncPresetSelectionsFromFields);
+sessionTypeSelect.addEventListener('change', () => {
+  markManualProtocolEntry();
+});
+providerInput.addEventListener('input', () => {
+  markManualProtocolEntry();
+  markManualModelEntry();
+});
+displayNameInput.addEventListener('input', markManualModelEntry);
+modelNameInput.addEventListener('input', markManualModelEntry);
+baseUrlInput.addEventListener('input', markManualProtocolEntry);
+apiKeyInput.addEventListener('input', () => {
+  markManualProtocolEntry();
+  markManualModelEntry();
+});
+workspaceNameInput.addEventListener('input', () => {
+  state.workspaceNameDirty = true;
+  state.workspaceNameAutoFilled = false;
+});
 apiKeyToggle.addEventListener('click', () => {
   apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
   renderApiKeyToggle();
 });
 saveLlmButton.addEventListener('click', saveLlmConfig);
 saveWorkspaceButton.addEventListener('click', saveWorkspace);
+browseWorkspacePathButton.addEventListener('click', browseWorkspacePath);
 connectRemoteButton.addEventListener('click', connectRemote);
 
 document.getElementById('new-chat-button').addEventListener('click', async () => sendPrompt('/new'));
@@ -1822,6 +2066,8 @@ workspaceList.addEventListener('click', async (event) => {
   if (!button) return;
   workspacePathInput.value = button.dataset.workspacePath || '';
   workspaceNameInput.value = button.dataset.workspaceName || '';
+  state.workspaceNameDirty = false;
+  state.workspaceNameAutoFilled = false;
   await saveWorkspace();
 });
 
@@ -1849,6 +2095,12 @@ window.addEventListener('click', (event) => {
     settingsDialog.close();
   }
 });
+
+const initialStoredTheme = window.localStorage.getItem('generic-coder-theme');
+if (THEME_OPTIONS.includes(initialStoredTheme)) {
+  state.theme = initialStoredTheme;
+  document.body.dataset.theme = initialStoredTheme;
+}
 
 applyLocale(preferredLocale(), false);
 loadBootstrap().catch((error) => {

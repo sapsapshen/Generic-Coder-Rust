@@ -1,447 +1,431 @@
-# Generic Coder
+# Generic Coder (Rust)
 
-<img width="5110" height="2330" alt="334250b4-d138-4c9e-86b8-c3e0cb3676a7" src="https://github.com/user-attachments/assets/770df563-bb44-4692-aadf-21fa5946d228" />
+Rust-native coding cockpit with a built-in web UI, local workspace tools, Git review flows, SSH support, and configurable LLM backends.
 
-<div align="center">
-  <img src="assets/images/generic-coder-banner.svg" width="880" alt="Generic Coder banner"/>
-</div>
-
-<p align="center">
-  <a href="#zh-cn">中文</a> | <a href="#en">English</a> | <a href="#es">Español</a>
-</p>
-
-<p align="center">
-  An agentic code generation and editing cockpit — built on GenericAgent, designed for real-world development.
-</p>
+**Language / Idioma / 语言:** [中文](#zh) | [English](#en) | [Español](#es)
 
 ---
 
-<a id="zh-cn"></a>
+<a id="zh"></a>
+
 ## 中文
 
-### 概述
+### 这是什么
 
-**Generic Coder** 是基于 **GenericAgent** 运行时而构建的 agentic 代码编辑工作台。它融合了现代 AI 编程工具的核心理念——Cursor 的 Diff 审查、Trae SOLO 的 Plan 模式、Copilot 的 Agent 编排、Zed 的多模型协作——同时保持极简、自包含的产品形态：无外部服务依赖，无需编辑器绑定，一个二进制即可在浏览器或桌面启动。
+Generic Coder 现已切换为 **Rust 主实现**。项目通过本地 Web UI 提供一个统一工作台，用于：
 
-项目保留 GenericAgent 的四层记忆系统、工具驱动执行引擎与多模型切换能力，在此基础上补齐了代码搜索、Git 感知、变更审查、安全检查点、思考可视化等现代编程代理必备能力，形成了从"对话式 AI"到"专业级编码工作台"的完整演进。
+- 与模型对话并执行编码任务
+- 切换和保存多套模型配置
+- 打开本地工作区、查看文件树、搜索文件
+- 查看 Git 变更、差异与回退信息
+- 连接远程 SSH 工作环境
 
-### 与主流工具的定位对比
+当前推荐入口：
 
-| 维度 | **Cursor** | **VS Code Copilot** | **Zed** | **Trae SOLO** | **Generic Coder** |
-|---|---|---|---|---|---|
-| 产品形态 | VS Code 分支 | IDE 扩展 | 原生编辑器 | IDE + 独立桌面 | **独立 Web + 桌面** |
-| Agent 模式 | Composer / Agent | Ask / Agent / Edit | 多 Agent 共存 | Chat / SOLO | **统一 Agent Loop** |
-| 代码搜索 | `@codebase` | `@workspace` | 编辑内搜索 | 项目搜索 | **ripgrep + Python 双引擎** |
-| Git 集成 | ✅ 深度 | ✅ 深度 | ✅ | ✅ | **status / diff / log** |
-| Diff 审查 | 逐 hunk accept/reject | 统一 diff 视图 | CRDT 实时 diff | DiffView 逐行 | **变更面板 + unified diff** |
-| 安全检查点 | 每步快照 | 检查点恢复 | — | 一键回滚 | **自动备份 + 手动回滚** |
-| 计划模式 | Composer 子任务 | Plan Agent | — | SOLO Plan | **Plan Mode + 进度追踪** |
-| 多模型切换 | ✅ | ✅ | ✅ | ✅ | **UI 切换 + 预设** |
-| 远程 SSH | 通过 MCP | 通过 MCP | — | 云端执行 | **内置 SSH + 远程执行** |
-| 多渠道接入 | — | — | — | — | **Web/桌面/TG/QQ/微信/飞书/DingTalk** |
-| 分发方式 | 下载安装 | 扩展市场 | 下载安装 | 下载安装 | **源码 + macOS/Win 安装包** |
-| 开源 | 否 | 否 | 是 (ACP 开放) | 否 | **是** |
-| 外部依赖 | IDE 绑定 | IDE 绑定 | 编辑器绑定 | 无 | **无 (自包含)** |
+- **Windows 一键启动：** `start-generic-coder.bat`
+- **命令行启动：** `cargo run -- serve --host 127.0.0.1 --port 8765`
 
-### 核心能力
+服务默认运行在：
 
-**执行与工具链**
-- **Agent Loop**：ReAct 风格多轮执行引擎，最大 70 轮自主决策，自动故障升级与重试策略
-- **代码搜索** (`content_search`)：ripgrep 首选 + Python 降级方案，支持正则、glob 过滤、上下文行
-- **Git 感知** (`git_status` / `git_diff` / `git_log`)：Agent 实时感知仓库状态，变更前自动评估
-- **精确编辑** (`file_patch` + `file_write`)：基于唯一匹配的字符串替换，防止误改
-- **代码执行** (`code_run`)：Python / Bash / PowerShell 沙箱执行，带超时与流式输出
-- **浏览器控制** (`web_scan` / `web_execute_js`)：CDP 协议驱动，HTML 简化与 JS 注入
-- **媒体处理** (`media_info` / `media_extract`)：PDF / DOCX / XLSX / 图片 / 视频元数据提取
-- **远程操作** (`remote_*` 系列)：SSH 连接、远程命令执行、远程文件读写
-
-**安全与审计**
-- **自动备份**：每次 `file_patch` / `file_write` 前自动创建带时间戳的备份
-- **文件回滚** (`file_revert`)：一键恢复到任意备份版本，Agent 可自主调用
-- **变更审查**：Web UI 内置变更面板，实时展示文件修改的 unified diff
-- **计划模式**：Agent 先出计划、用户审批、逐项执行、自动验证，进度条实时追踪
-
-**UI 与交互**
-- **思考可视化**：Agent 的 `<thinking>` 内部推理以可折叠面板展示，`<summary>` 阶段摘要以标签显示
-- **语法高亮**：代码块根据语言自动着色（关键词、字符串、注释、数字）
-- **命令面板** (`Cmd+K`)：全局命令搜索与快速执行
-- **@文件引用**：在输入框中输入 `@` 触发工作区文件自动补全
-- **会话标签页**：多会话快速切换，保留历史上下文
-- **快捷键**：`⌘↩` 发送、`⌘⇧N` 新建、`⌘⇧S` 停止、`Esc` 关闭面板
-- **图片输入**：支持粘贴/拖拽图片到输入框，自动上传并注入上下文
-- **会话导出**：一键导出对话为 Markdown 文件
-- **长输出折叠**：超长工具输出自动折叠，点击展开
-- **5 套主题**：Solar Flare / Liquid Graphite / Neon Wave / Daybreak / Ember Core，适配不同光线环境
-
-**记忆与自治**
-- **四层记忆系统 (L1-L4)**：导航索引→环境数据→任务 SOP→原始日志，行动验证原则保证质量
-- **自主调度器**：cron 式定时任务 + 空闲监测，Agent 可完全自主执行周期性工作
-- **工作检查点**：长任务中 Agent 自动保存关键上下文，防止上下文窗口溢出导致信息丢失
-
-**分发与部署**
-- **Web 工作台**：Bottle 驱动，零配置启动，浏览器即开即用
-- **桌面应用**：pywebview 包装，1440×940 原生窗口，支持空闲监测与后台 Bot
-- **多渠道聊天接入**：Telegram / QQ / 企业微信 / 微信 / 飞书 / DingTalk，统一 Agent 后端
-- **安装包生成**：macOS `.app` / `.dmg` / `.pkg`，Windows `.exe`，版本化发布
-
-### 系统架构
-
+```text
+http://127.0.0.1:8765
 ```
-┌─────────────────────────────────────────────────┐
-│              用户接入层                           │
-│   Web / Desktop / TG / QQ / WeChat / Feishu / DT │
-├─────────────────────────────────────────────────┤
-│           GenericCoderState / AgentChat           │
-│        会话管理 · 流式传输 · 命令路由               │
-├─────────────────────────────────────────────────┤
-│          GenericAgent (agentmain.py)              │
-│        任务队列 · LLM 切换 · 斜杠命令 · 中止          │
-├───────────────┬──────────────┬──────────────────┤
-│  agent_loop   │    ga.py     │   llmcore.py     │
-│  回合引擎      │  工具处理器    │   多后端 LLM      │
-│  max_turns    │  工作区/远程  │   Claude/OAI/    │
-│  dispatch     │  媒体/记忆    │   Native/Mixin   │
-├───────────────┴──────────────┴──────────────────┤
-│         工具层 (17 个工具)                        │
-│  code_run · file_read · file_patch · file_write │
-│  content_search · git_* · web_* · remote_*      │
-│  media_* · ask_user · file_revert · workspace_* │
-├─────────────────────────────────────────────────┤
-│       基础设施                                    │
-│  workspace.py · remoteserver.py · media_handler │
-│  memory/ (L1-L4) · reflect/scheduler.py         │
-└─────────────────────────────────────────────────┘
-```
+
+### 当前实现状态
+
+Rust 版本已经接管核心运行路径：
+
+- `src\main.rs`：CLI 与服务启动
+- `src\web.rs`：Web UI 后端
+- `src\agent.rs`：Agent 循环与任务执行
+- `src\llm.rs`：Claude / OpenAI 兼容 / 推理与流式解析
+- `src\tools.rs`、`src\workspace.rs`、`src\remote.rs`：工具、工作区、远程环境
+
+旧 Python 代码已不再是默认启动路径。
+
+### 已支持的能力
+
+- Rust + Axum Web 服务
+- 聊天工作台与任务轮询
+- 多模型配置、切换与本地持久化
+- 本地工作区选择：支持图形点选和手动输入路径
+- Git 变更查看、差异预览、回退辅助
+- 远程 SSH 连接与文件/命令操作
+- 图片上传到上下文
+- 主题切换与多主题 UI
+
+### 模型配置
+
+可以通过两种方式配置模型：
+
+1. **推荐：** 启动后在 Web UI 的 **Settings** 中直接填写
+2. 在项目根目录放置 `mykey.json`（参考 `mykey.json.example`）
+
+UI 已内置常见预设，支持直接填写 API Key 使用，包括：
+
+- DeepSeek
+- Qwen / DashScope
+- Kimi / Moonshot
+- MiniMax
+- Doubao / Ark
+- Tencent Hunyuan
+- Baidu Qianfan
+- Zhipu
+- OpenAI / Anthropic / OpenRouter
+
+也支持手动填写：
+
+- Session type
+- Base URL
+- Provider
+- Model name
+- API Key
+
+UI 保存的配置默认写入当前用户目录，不会自动写回仓库文件。
 
 ### 快速开始
 
-```bash
-git clone https://github.com/lsdefine/GenericAgent.git
-cd GenericAgent
-pip install -e ".[ui,installer,media,remote,workspace]"
-cp mykey_template.py mykey.py
-# 编辑 mykey.py 填入 API 密钥与模型配置
-python launch.pyw
+#### 1. 安装 Rust
+
+```powershell
+rustc --version
+cargo --version
 ```
 
-仅启动 Web 端：
+如果没有 Rust，请先安装 [Rustup](https://rustup.rs/)。
 
-```bash
-python frontends/generic_coder_web.py --host 127.0.0.1 --port 8876
-```
-
-### 安装包生成
-
-macOS：
+#### 2. 获取代码
 
 ```bash
-python3 build_installer.py --target macos --clean
+git clone https://github.com/sapsapshen/Generic-Coder-Rust.git
+cd Generic-Coder-Rust
 ```
 
-Windows：
+#### 3. 启动
+
+**Windows**
+
+双击：
+
+```text
+start-generic-coder.bat
+```
+
+**macOS / Linux / 手动**
 
 ```bash
-python3 build_installer.py --target windows-source-installer
+cargo run -- serve --host 127.0.0.1 --port 8765
 ```
 
-产物位于 `dist/`：`Generic Coder.app`、`.dmg`、`.pkg`、`.exe`。
+#### 4. 打开浏览器
 
-### 项目结构
-
-```
-GenericAgent/
-├── agent_loop.py          # ReAct 回合引擎
-├── agentmain.py           # GenericAgent 主控 + CLI
-├── ga.py                  # 工具处理器 (17 个 do_* 方法)
-├── llmcore.py             # 多后端 LLM 客户端
-├── workspace.py           # 本地工作区管理
-├── remoteserver.py        # SSH 远程连接管理
-├── media_handler.py       # 媒体文件处理
-├── simphtml.py            # HTML 简化引擎
-├── TMWebDriver.py         # CDP 浏览器驱动
-├── assets/
-│   ├── sys_prompt.txt     # 系统提示词
-│   ├── tools_schema.json  # 工具定义
-│   └── generic_coder/     # Web UI 前端 (HTML/CSS/JS)
-├── frontends/             # 所有用户界面
-│   ├── generic_coder_web.py    # Web 工作台 (Bottle)
-│   ├── stapp_enhanced.py       # Streamlit 备选前端
-│   ├── tgapp.py / qqapp.py ... # 聊天机器人
-│   └── themes.py               # 主题引擎
-├── memory/                # 四层记忆系统
-├── reflect/               # 自主调度器
-└── dist/                  # 安装包产物
+```text
+http://127.0.0.1:8765
 ```
 
-### 相关文档
+### 开发与验证
 
-- 新手上手说明：[GETTING_STARTED.md](GETTING_STARTED.md)
-- 入口文件：[launch.pyw](launch.pyw) 与 [frontends/generic_coder_web.py](frontends/generic_coder_web.py)
+```bash
+cargo test
+```
+
+### 目录结构
+
+```text
+src\
+  main.rs       CLI + 服务启动
+  web.rs        Web UI 后端
+  agent.rs      Agent 循环
+  llm.rs        模型接入与流式解析
+  tools.rs      工具集合
+  workspace.rs  工作区管理
+  remote.rs     SSH 远程环境
+  media.rs      媒体处理
+  config.rs     配置加载与保存
+assets\
+  generic_coder\  Web 前端资源
+```
 
 ---
 
 <a id="en"></a>
+
 ## English
 
-### Overview
+### What it is
 
-**Generic Coder** is an agentic code editing workstation built on the **GenericAgent** runtime. It synthesizes the core paradigms of modern AI coding tools — Cursor's diff review workflow, Trae SOLO's plan-driven execution, Copilot's agent orchestration, Zed's multi-model collaboration — while maintaining a minimal, self-contained product form: no external service dependencies, no editor binding, one binary to launch in browser or desktop.
+Generic Coder is now a **Rust-first** coding cockpit. It provides a local web interface for:
 
-Built on GenericAgent's four-layer memory system, tool-driven execution engine, and multi-model switching, the project adds code search, Git awareness, change review, safety checkpoints, and agent transparency — completing the evolution from "conversational AI" to "professional-grade coding workstation."
+- chatting with an LLM-driven coding agent
+- saving and switching model configurations
+- opening a local workspace, browsing the tree, and searching files
+- reviewing Git changes and diffs
+- connecting to a remote SSH environment
 
-### Competitive Landscape
+Recommended entry points:
 
-| Dimension | **Cursor** | **VS Code Copilot** | **Zed** | **Trae SOLO** | **Generic Coder** |
-|---|---|---|---|---|---|
-| Form factor | VS Code fork | IDE extension | Native editor | IDE + standalone | **Standalone Web + Desktop** |
-| Agent mode | Composer / Agent | Ask / Agent / Edit | Multi-agent coexistence | Chat / SOLO | **Unified Agent Loop** |
-| Code search | `@codebase` | `@workspace` | In-editor | Project search | **ripgrep + Python dual-engine** |
-| Git integration | ✅ Deep | ✅ Deep | ✅ | ✅ | **status / diff / log** |
-| Diff review | Per-hunk accept/reject | Unified diff view | CRDT real-time | DiffView per-line | **Change panel + unified diff** |
-| Safety checkpoints | Per-step snapshots | Checkpoint restore | — | One-click rollback | **Auto-backup + manual revert** |
-| Plan mode | Composer subtasks | Plan Agent | — | SOLO Plan | **Plan mode + progress tracking** |
-| Multi-model | ✅ | ✅ | ✅ | ✅ | **UI switching + presets** |
-| Remote SSH | Via MCP | Via MCP | — | Cloud execution | **Built-in SSH + remote exec** |
-| Multi-channel | — | — | — | — | **Web/Desktop/TG/QQ/WeChat/Feishu/DingTalk** |
-| Distribution | Download | Extension marketplace | Download | Download | **Source + macOS/Win installers** |
-| Open source | No | No | Yes (ACP open) | No | **Yes** |
-| External deps | IDE-bound | IDE-bound | Editor-bound | None | **None (self-contained)** |
+- **Windows one-click launcher:** `start-generic-coder.bat`
+- **Manual startup:** `cargo run -- serve --host 127.0.0.1 --port 8765`
 
-### Core Capabilities
+Default local URL:
 
-**Execution & Toolchain**
-- **Agent Loop**: ReAct-style multi-turn execution engine, up to 70 autonomous turns, automatic error escalation and retry strategy
-- **Code Search** (`content_search`): ripgrep with Python fallback; regex, glob filtering, context lines
-- **Git Awareness** (`git_status` / `git_diff` / `git_log`): agent perceives repository state, evaluates before making changes
-- **Precise Editing** (`file_patch` + `file_write`): unique-match string replacement prevents accidental overwrites
-- **Code Execution** (`code_run`): Python / Bash / PowerShell sandbox with timeout and streaming output
-- **Browser Control** (`web_scan` / `web_execute_js`): CDP-driven, simplified HTML extraction, JS injection
-- **Media Processing** (`media_info` / `media_extract`): PDF / DOCX / XLSX / images / video metadata
-- **Remote Operations** (`remote_*`): SSH connection, remote command execution, remote file I/O
-
-**Safety & Audit**
-- **Auto-backup**: timestamped backup before every `file_patch` / `file_write` operation
-- **File Revert** (`file_revert`): one-click restore to any backup version; agent-invokable
-- **Change Review**: built-in web UI change panel with unified diff for every modified file
-- **Plan Mode**: agent drafts plan → user approves → step-by-step execution → automatic verification, with live progress bar
-
-**UI & Interaction**
-- **Thinking Visualization**: agent's `<thinking>` reasoning displayed in collapsible panels, `<summary>` stage summaries as inline badges
-- **Syntax Highlighting**: language-aware code coloring (keywords, strings, comments, numbers)
-- **Command Palette** (`Cmd+K`): global command search and instant execution
-- **@File References**: type `@` in composer to trigger workspace file auto-complete
-- **Session Tabs**: multi-session quick switching with preserved history context
-- **Keyboard Shortcuts**: `⌘↩` send, `⌘⇧N` new chat, `⌘⇧S` stop, `Esc` close panels
-- **Image Input**: paste or drag-drop images into composer; auto-upload and context injection
-- **Conversation Export**: one-click export to Markdown
-- **Long Output Collapse**: oversized tool outputs auto-collapse with expand button
-- **5 Themes**: Solar Flare / Liquid Graphite / Neon Wave / Daybreak / Ember Core
-
-**Memory & Autonomy**
-- **Four-Layer Memory (L1-L4)**: navigation index → environment data → task SOPs → raw logs; action-verified principle for quality
-- **Autonomous Scheduler**: cron-style periodic tasks + idle monitoring; agent executes independently
-- **Working Checkpoints**: auto-saved key context during long tasks; prevents information loss from context window overflow
-
-**Distribution**
-- **Web Cockpit**: Bottle-powered, zero-config, browser-ready
-- **Desktop App**: pywebview wrapper, 1440×940 native window, idle monitor and background bot support
-- **Multi-channel Chat**: Telegram / QQ / WeCom / WeChat / Feishu / DingTalk, unified agent backend
-- **Installers**: macOS `.app` / `.dmg` / `.pkg`, Windows `.exe`, versioned releases
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│              User Access Layer                   │
-│   Web / Desktop / TG / QQ / WeChat / Feishu / DT │
-├─────────────────────────────────────────────────┤
-│           GenericCoderState / AgentChat           │
-│        Session mgmt · Streaming · Commands       │
-├─────────────────────────────────────────────────┤
-│          GenericAgent (agentmain.py)              │
-│        Task queue · LLM switch · Slash · Abort    │
-├───────────────┬──────────────┬──────────────────┤
-│  agent_loop   │    ga.py     │   llmcore.py     │
-│  Turn engine  │  Tool handler │  Multi-backend   │
-│  max_turns    │  Workspace/   │  Claude/OAI/     │
-│  dispatch     │  Remote/Media │  Native/Mixin    │
-├───────────────┴──────────────┴──────────────────┤
-│           Tool Layer (17 tools)                   │
-│  code_run · file_read · file_patch · file_write  │
-│  content_search · git_* · web_* · remote_*       │
-│  media_* · ask_user · file_revert · workspace_*  │
-├─────────────────────────────────────────────────┤
-│        Infrastructure                             │
-│  workspace.py · remoteserver.py · media_handler  │
-│  memory/ (L1-L4) · reflect/scheduler.py          │
-└─────────────────────────────────────────────────┘
+```text
+http://127.0.0.1:8765
 ```
 
-### Quick Start
+### Current implementation status
+
+The Rust runtime now owns the supported execution path:
+
+- `src\main.rs` - CLI and server startup
+- `src\web.rs` - web backend
+- `src\agent.rs` - agent loop and task execution
+- `src\llm.rs` - Claude / OpenAI-compatible backends and streaming parsing
+- `src\tools.rs`, `src\workspace.rs`, `src\remote.rs` - tools, workspace, and remote environment support
+
+The legacy Python entrypoints are no longer the primary startup path.
+
+### Included capabilities
+
+- Rust + Axum web server
+- chat workspace with task polling
+- multi-model configuration and local persistence
+- local workspace selection with both folder picker and direct path input
+- Git change review, diff preview, and revert helpers
+- remote SSH connection and file/command operations
+- image upload into the chat context
+- theme switching and multiple UI themes
+
+### Model configuration
+
+You can configure models in two ways:
+
+1. **Recommended:** save them in **Settings** from the web UI
+2. Add a `mykey.json` file in the project root based on `mykey.json.example`
+
+The UI includes ready-to-use presets for common providers:
+
+- DeepSeek
+- Qwen / DashScope
+- Kimi / Moonshot
+- MiniMax
+- Doubao / Ark
+- Tencent Hunyuan
+- Baidu Qianfan
+- Zhipu
+- OpenAI / Anthropic / OpenRouter
+
+Manual configuration is also supported for:
+
+- session type
+- base URL
+- provider
+- model name
+- API key
+
+Saved UI configurations are written to the local user profile rather than committed to the repository.
+
+### Quick start
+
+#### 1. Install Rust
 
 ```bash
-git clone https://github.com/lsdefine/GenericAgent.git
-cd GenericAgent
-pip install -e ".[ui,installer,media,remote,workspace]"
-cp mykey_template.py mykey.py
-# Edit mykey.py with your API key and model config
-python launch.pyw
+rustc --version
+cargo --version
 ```
 
-Web-only mode:
+If Rust is not installed yet, use [Rustup](https://rustup.rs/).
+
+#### 2. Clone the repository
 
 ```bash
-python frontends/generic_coder_web.py --host 127.0.0.1 --port 8876
+git clone https://github.com/sapsapshen/Generic-Coder-Rust.git
+cd Generic-Coder-Rust
 ```
 
-### Build Installers
+#### 3. Start the app
 
-macOS:
+**Windows**
+
+Double-click:
+
+```text
+start-generic-coder.bat
+```
+
+**macOS / Linux / manual**
 
 ```bash
-python3 build_installer.py --target macos --clean
+cargo run -- serve --host 127.0.0.1 --port 8765
 ```
 
-Windows:
+#### 4. Open the UI
+
+```text
+http://127.0.0.1:8765
+```
+
+### Development
 
 ```bash
-python3 build_installer.py --target windows-source-installer
+cargo test
 ```
 
-Output artifacts in `dist/`: `Generic Coder.app`, `.dmg`, `.pkg`, `.exe`.
+### Project structure
 
-### Project Layout
-
+```text
+src\
+  main.rs       CLI + server startup
+  web.rs        Web UI backend
+  agent.rs      Agent loop
+  llm.rs        Model integration and streaming parser
+  tools.rs      Tool implementations
+  workspace.rs  Workspace manager
+  remote.rs     SSH remote support
+  media.rs      Media handling
+  config.rs     Config loading and persistence
+assets\
+  generic_coder\  Web frontend assets
 ```
-GenericAgent/
-├── agent_loop.py          # ReAct turn engine
-├── agentmain.py           # GeneraticAgent main + CLI
-├── ga.py                  # Tool handler (17 do_* methods)
-├── llmcore.py             # Multi-backend LLM client
-├── workspace.py           # Local workspace manager
-├── remoteserver.py        # SSH remote connection manager
-├── media_handler.py       # Media file processor
-├── simphtml.py            # HTML simplifier
-├── TMWebDriver.py         # CDP browser driver
-├── assets/
-│   ├── sys_prompt.txt     # System prompt
-│   ├── tools_schema.json  # Tool definitions
-│   └── generic_coder/     # Web UI frontend (HTML/CSS/JS)
-├── frontends/             # All user interfaces
-│   ├── generic_coder_web.py    # Web cockpit (Bottle)
-│   ├── stapp_enhanced.py       # Streamlit alternative
-│   ├── tgapp.py / qqapp.py ... # Chat bots
-│   └── themes.py               # Theme engine
-├── memory/                # Four-layer memory system
-├── reflect/               # Autonomous scheduler
-└── dist/                  # Installer outputs
-```
-
-### Further Reading
-
-- Setup guide: [GETTING_STARTED.md](GETTING_STARTED.md)
-- Entry points: [launch.pyw](launch.pyw) and [frontends/generic_coder_web.py](frontends/generic_coder_web.py)
 
 ---
 
 <a id="es"></a>
+
 ## Español
 
-### Descripción general
+### Qué es
 
-**Generic Coder** es una estación de trabajo de codificación agentiva construida sobre el runtime de **GenericAgent**. Sintetiza los paradigmas fundamentales de las herramientas modernas de programación con IA — el flujo de revisión de diffs de Cursor, la ejecución basada en planes de Trae SOLO, la orquestación de agentes de Copilot, la colaboración multi-modelo de Zed — manteniendo una forma de producto mínima y autónoma: sin dependencias de servicios externos, sin ataduras a un editor, un solo binario para iniciar en navegador o escritorio.
+Generic Coder ahora funciona con una implementación **principalmente en Rust**. Ofrece una interfaz web local para:
 
-### Comparativa competitiva
+- conversar con un agente de programación basado en LLM
+- guardar y cambiar configuraciones de modelos
+- abrir un espacio de trabajo local, ver el árbol y buscar archivos
+- revisar cambios y diffs de Git
+- conectarse a un entorno remoto por SSH
 
-| Dimensión | **Cursor** | **VS Code Copilot** | **Zed** | **Trae SOLO** | **Generic Coder** |
-|---|---|---|---|---|---|
-| Forma de producto | Fork de VS Code | Extensión IDE | Editor nativo | IDE + independiente | **Web + Escritorio independiente** |
-| Modo agente | Composer / Agent | Ask / Agent / Edit | Multi-agente coexistente | Chat / SOLO | **Agent Loop unificado** |
-| Búsqueda de código | `@codebase` | `@workspace` | En editor | Búsqueda de proyecto | **ripgrep + Python (doble motor)** |
-| Integración Git | ✅ Profunda | ✅ Profunda | ✅ | ✅ | **status / diff / log** |
-| Revisión de diffs | Aceptar/rechazar por hunk | Vista diff unificada | CRDT en tiempo real | DiffView por línea | **Panel de cambios + diff unificado** |
-| Puntos de control | Instantáneas por paso | Restauración | — | Reversión un clic | **Respaldo automático + reversión manual** |
-| Modo plan | Subtareas Composer | Plan Agent | — | SOLO Plan | **Modo Plan + seguimiento de progreso** |
-| Multi-modelo | ✅ | ✅ | ✅ | ✅ | **Cambio UI + presets** |
-| SSH remoto | Vía MCP | Vía MCP | — | Ejecución en nube | **SSH integrado + ejecución remota** |
-| Multicanal | — | — | — | — | **Web/Escritorio/TG/QQ/WeChat/Feishu/DingTalk** |
-| Distribución | Descarga | Marketplace | Descarga | Descarga | **Código + instaladores macOS/Win** |
-| Código abierto | No | No | Sí (ACP abierto) | No | **Sí** |
-| Dependencias externas | Ligado al IDE | Ligado al IDE | Ligado al editor | Ninguna | **Ninguna (autónomo)** |
+Entradas recomendadas:
 
-### Capacidades principales
+- **Inicio con un clic en Windows:** `start-generic-coder.bat`
+- **Inicio manual:** `cargo run -- serve --host 127.0.0.1 --port 8765`
 
-**Ejecución y herramientas**
-- **Agent Loop**: motor de ejecución multi-turno estilo ReAct, hasta 70 turnos autónomos, escalada de errores automática
-- **Búsqueda de código** (`content_search`): ripgrep con respaldo Python; regex, filtro glob, líneas de contexto
-- **Conciencia Git** (`git_status` / `git_diff` / `git_log`): el agente percibe el estado del repositorio
-- **Edición precisa** (`file_patch` + `file_write`): reemplazo por coincidencia única, sin sobrescrituras accidentales
-- **Ejecución de código** (`code_run`): sandbox Python / Bash / PowerShell con timeout y salida en streaming
-- **Control de navegador** (`web_scan` / `web_execute_js`): basado en CDP, extracción HTML simplificada
-- **Procesamiento multimedia** (`media_info` / `media_extract`): PDF / DOCX / XLSX / imágenes / video
-- **Operaciones remotas** (`remote_*`): conexión SSH, ejecución remota, E/S de archivos remotos
+URL local por defecto:
 
-**Seguridad y auditoría**
-- **Respaldo automático**: copia de seguridad con marca de tiempo antes de cada modificación de archivo
-- **Reversión de archivos** (`file_revert`): restauración con un clic a cualquier versión respaldada
-- **Revisión de cambios**: panel de cambios integrado con diff unificado para cada archivo modificado
-- **Modo Plan**: el agente redacta un plan → el usuario aprueba → ejecución paso a paso → verificación automática
+```text
+http://127.0.0.1:8765
+```
 
-**Interfaz e interacción**
-- **Visualización de pensamiento**: razonamiento `<thinking>` del agente en paneles colapsables, resúmenes `<summary>` como insignias
-- **Resaltado de sintaxis**: coloreado de código por lenguaje (palabras clave, cadenas, comentarios, números)
-- **Paleta de comandos** (`Cmd+K`): búsqueda global de comandos con ejecución instantánea
-- **Referencias @archivo**: escribe `@` en el compositor para autocompletar archivos del espacio de trabajo
-- **Pestañas de sesión**: cambio rápido entre múltiples sesiones con historial preservado
-- **Atajos de teclado**: `⌘↩` enviar, `⌘⇧N` nuevo, `⌘⇧S` detener, `Esc` cerrar paneles
-- **Entrada de imágenes**: pegar o arrastrar imágenes al compositor; carga automática e inyección en contexto
-- **Exportación de conversación**: exportación a Markdown con un clic
-- **Colapso de salidas largas**: salidas extensas se colapsan automáticamente
-- **5 temas**: Solar Flare / Liquid Graphite / Neon Wave / Daybreak / Ember Core
+### Estado actual de la implementación
 
-**Memoria y autonomía**
-- **Sistema de memoria en cuatro capas (L1-L4)**: índice de navegación → datos de entorno → SOPs de tareas → registros brutos
-- **Planificador autónomo**: tareas periódicas estilo cron + monitoreo de inactividad
-- **Puntos de control de trabajo**: contexto clave guardado automáticamente durante tareas largas
+La ruta de ejecución soportada ya está controlada por Rust:
 
-**Distribución**
-- **Cockpit Web**: impulsado por Bottle, sin configuración, listo para navegador
-- **Aplicación de escritorio**: envoltura pywebview, ventana nativa 1440×940
-- **Chat multicanal**: Telegram / QQ / WeCom / WeChat / Feishu / DingTalk
-- **Instaladores**: `.app` / `.dmg` / `.pkg` para macOS, `.exe` para Windows
+- `src\main.rs` - CLI e inicio del servidor
+- `src\web.rs` - backend de la interfaz web
+- `src\agent.rs` - bucle del agente y ejecución de tareas
+- `src\llm.rs` - backends compatibles con Claude / OpenAI y parsing de streaming
+- `src\tools.rs`, `src\workspace.rs`, `src\remote.rs` - herramientas, espacio de trabajo y entorno remoto
+
+Las rutas antiguas en Python ya no son la vía principal de inicio.
+
+### Capacidades incluidas
+
+- servidor web Rust + Axum
+- espacio de chat con sondeo de tareas
+- configuración múltiple de modelos con persistencia local
+- selección de espacio de trabajo local por selector gráfico o ruta manual
+- revisión de cambios Git, vista previa de diff y ayuda para revertir
+- conexión SSH remota y operaciones de archivos/comandos
+- subida de imágenes al contexto del chat
+- cambio de tema y varios temas de interfaz
+
+### Configuración de modelos
+
+Puedes configurar modelos de dos formas:
+
+1. **Recomendado:** desde **Settings** en la interfaz web
+2. Creando `mykey.json` en la raíz del proyecto a partir de `mykey.json.example`
+
+La UI ya incluye preajustes para proveedores comunes:
+
+- DeepSeek
+- Qwen / DashScope
+- Kimi / Moonshot
+- MiniMax
+- Doubao / Ark
+- Tencent Hunyuan
+- Baidu Qianfan
+- Zhipu
+- OpenAI / Anthropic / OpenRouter
+
+También se puede configurar manualmente:
+
+- tipo de sesión
+- base URL
+- proveedor
+- nombre del modelo
+- API key
+
+Las configuraciones guardadas desde la UI se escriben en el perfil local del usuario, no en el repositorio.
 
 ### Inicio rápido
 
-```bash
-git clone https://github.com/lsdefine/GenericAgent.git
-cd GenericAgent
-pip install -e ".[ui,installer,media,remote,workspace]"
-cp mykey_template.py mykey.py
-# Editar mykey.py con la clave API y configuración del modelo
-python launch.pyw
-```
-
-Solo Web:
+#### 1. Instala Rust
 
 ```bash
-python frontends/generic_coder_web.py --host 127.0.0.1 --port 8876
+rustc --version
+cargo --version
 ```
 
-### Generar instaladores
+Si aún no tienes Rust, instala [Rustup](https://rustup.rs/).
 
-macOS:
+#### 2. Clona el repositorio
 
 ```bash
-python3 build_installer.py --target macos --clean
+git clone https://github.com/sapsapshen/Generic-Coder-Rust.git
+cd Generic-Coder-Rust
 ```
 
-Windows:
+#### 3. Inicia la aplicación
+
+**Windows**
+
+Haz doble clic en:
+
+```text
+start-generic-coder.bat
+```
+
+**macOS / Linux / manual**
 
 ```bash
-python3 build_installer.py --target windows-source-installer
+cargo run -- serve --host 127.0.0.1 --port 8765
 ```
 
-### Documentación
+#### 4. Abre la interfaz
 
-- Guía de inicio: [GETTING_STARTED.md](GETTING_STARTED.md)
-- Puntos de entrada: [launch.pyw](launch.pyw) y [frontends/generic_coder_web.py](frontends/generic_coder_web.py)
+```text
+http://127.0.0.1:8765
+```
+
+### Desarrollo
+
+```bash
+cargo test
+```
+
+### Estructura del proyecto
+
+```text
+src\
+  main.rs       CLI + inicio del servidor
+  web.rs        Backend de la interfaz web
+  agent.rs      Bucle del agente
+  llm.rs        Integración de modelos y parser de streaming
+  tools.rs      Implementación de herramientas
+  workspace.rs  Gestión del espacio de trabajo
+  remote.rs     Soporte SSH remoto
+  media.rs      Manejo de medios
+  config.rs     Carga y persistencia de configuración
+assets\
+  generic_coder\  Recursos del frontend web
+```
