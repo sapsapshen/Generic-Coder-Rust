@@ -12,7 +12,8 @@ Rust-native coding cockpit with a built-in web UI, local workspace tools, Git re
 
 ### 这是什么
 
-Generic Coder 现已切换为 **Rust 主实现**。项目通过本地 Web UI 提供一个统一工作台，用于：
+Generic Coder：https://github.com/sapsapshen/Generic-Coder
+现已切换为 **Rust 主实现**。项目通过本地 Web UI 提供一个统一工作台，用于：
 
 - 与模型对话并执行编码任务
 - 切换和保存多套模型配置
@@ -154,7 +155,8 @@ assets\
 
 ### What it is
 
-Generic Coder is now a **Rust-first** coding cockpit. It provides a local web interface for:
+Generic Coder：https://github.com/sapsapshen/Generic-Coder
+is now a **Rust-first** coding cockpit. It provides a local web interface for:
 
 - chatting with an LLM-driven coding agent
 - saving and switching model configurations
@@ -296,7 +298,8 @@ assets\
 
 ### Qué es
 
-Generic Coder ahora funciona con una implementación **principalmente en Rust**. Ofrece una interfaz web local para:
+Generic Coder：https://github.com/sapsapshen/Generic-Coder
+ahora funciona con una implementación **principalmente en Rust**. Ofrece una interfaz web local para:
 
 - conversar con un agente de programación basado en LLM
 - guardar y cambiar configuraciones de modelos
