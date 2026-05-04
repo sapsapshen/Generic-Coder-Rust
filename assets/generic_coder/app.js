@@ -530,7 +530,7 @@ const skillUrlInput = document.getElementById('skill-url-input');
 const installSkillButton = document.getElementById('install-skill-button');
 const WORKSPACE_PICKER_TOKEN_KEY = 'generic-coder-workspace-picker-token';
 
-function hydrateWorkspacePickerToken() {
+async function hydrateWorkspacePickerToken() {
   const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
   const params = new URLSearchParams(hash);
   const tokenFromHash = params.get('picker_token');
@@ -542,6 +542,22 @@ function hydrateWorkspacePickerToken() {
     window.history.replaceState(null, '', nextUrl);
   }
   state.workspacePickerToken = window.sessionStorage.getItem(WORKSPACE_PICKER_TOKEN_KEY) || '';
+
+  // If no token from hash, fetch it from the server (auto-generated on loopback)
+  if (!state.workspacePickerToken) {
+    try {
+      const res = await fetch('/api/workspace/picker-token');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.token) {
+          state.workspacePickerToken = data.token;
+          window.sessionStorage.setItem(WORKSPACE_PICKER_TOKEN_KEY, data.token);
+        }
+      }
+    } catch (_) {
+      // Picker unavailable — user can still type paths manually
+    }
+  }
 }
 
 function t(key) {
@@ -1529,7 +1545,7 @@ async function loadWorkflowState() {
 }
 
 async function loadBootstrap() {
-  hydrateWorkspacePickerToken();
+  await hydrateWorkspacePickerToken();
   const storedTheme = window.localStorage.getItem('generic-coder-theme');
   if (THEME_OPTIONS.includes(storedTheme)) {
     setTheme(storedTheme, false);
@@ -1555,6 +1571,11 @@ async function loadBootstrap() {
     state.workflowActive = data.workflow.active || false;
     state.workflowCurrentNode = data.workflow.current_node || 0;
     renderWorkflow();
+  }
+  // If no picker token yet, try the one from bootstrap (server auto-generates on loopback)
+  if (!state.workspacePickerToken && data.picker_token) {
+    state.workspacePickerToken = data.picker_token;
+    window.sessionStorage.setItem(WORKSPACE_PICKER_TOKEN_KEY, data.picker_token);
   }
   const resolvedTheme = THEME_OPTIONS.includes(storedTheme) ? storedTheme : (data.theme || 'solarflare');
   setTheme(resolvedTheme, false);

@@ -557,6 +557,7 @@ async fn bootstrap(State(state): State<Arc<AppState>>) -> Json<Value> {
         "last_reply_time": current_timestamp(),
         "mode": mode_str,
         "workflow": serde_json::to_value(&workflow).unwrap_or_default(),
+        "picker_token": state.workspace_picker_token.as_deref().unwrap_or(""),
     }))
 }
 
@@ -661,6 +662,22 @@ async fn set_workspace(
     })))
 }
 
+/// Expose the workspace picker token to the frontend.
+/// Only callable on loopback to prevent exposing the token externally.
+async fn picker_token(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !state.local_only_ui {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "Picker token is only available on loopback",
+        ));
+    }
+    Ok(Json(json!({
+        "token": state.workspace_picker_token.as_deref().unwrap_or(""),
+    })))
+}
+
 async fn pick_workspace_folder(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -698,10 +715,12 @@ async fn pick_workspace_folder(
         ));
     }
 
-    let picked = tokio::task::spawn_blocking(|| {
-        rfd::FileDialog::new()
-            .set_title("Select workspace folder")
-            .pick_folder()
+    let picked = tokio::task::spawn_blocking(move || {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            rfd::FileDialog::new()
+                .set_title("Select workspace folder")
+                .pick_folder()
+        }))
     })
     .await
     .map_err(|err| {
@@ -709,7 +728,13 @@ async fn pick_workspace_folder(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Folder picker failed: {err}"),
         )
-    })?;
+    })
+    .and_then(|result| result.map_err(|_| {
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Folder picker is not available in this environment (non-windowed session). Use manual path input instead.",
+        )
+    }))?;
 
     let Some(path) = picked else {
         return Ok(Json(json!({"path": null, "cancelled": true})));
@@ -1371,6 +1396,7 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/llm-config", post(llm_config))
         .route("/api/workspace", post(set_workspace))
         .route("/api/workspace/pick", post(pick_workspace_folder))
+        .route("/api/workspace/picker-token", get(picker_token))
         .route("/api/remote/connect", post(connect_remote))
         .route("/api/chat", post(chat))
         .route("/api/tasks/{task_id}", get(task))
@@ -1424,9 +1450,22 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         sessions: RwLock::new(Vec::new()),
         remote_form: RwLock::new(initial_remote_form),
         local_only_ui: matches!(config.host.as_str(), "127.0.0.1" | "::1" | "localhost"),
-        workspace_picker_token: std::env::var("GENERIC_CODER_PICKER_TOKEN")
-            .ok()
-            .filter(|value| !value.trim().is_empty()),
+        workspace_picker_token: {
+            let env_token = std::env::var("GENERIC_CODER_PICKER_TOKEN")
+                .ok()
+                .filter(|v| !v.trim().is_empty());
+            // When running on loopback without an explicit env token, auto-generate one
+            // so the native folder picker works out of the box on local dev.
+            env_token.or_else(|| {
+                if matches!(config.host.as_str(), "127.0.0.1" | "::1" | "localhost") {
+                    let token = uuid::Uuid::new_v4().to_string().replace('-', "");
+                    log::info!("Auto-generated workspace picker token: {token}");
+                    Some(token)
+                } else {
+                    None
+                }
+            })
+        },
         skills_manager: SkillsManager::new(&config.project_dir),
         error_memory: ErrorMemory::new(&config.project_dir),
         workflow: RwLock::new(Workflow::default()),
