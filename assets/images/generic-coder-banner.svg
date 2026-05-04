@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="140" y1="36" x2="1468" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8EE"/>
+      <stop offset="0.48" stop-color="#FFF0D8"/>
+      <stop offset="1" stop-color="#FFD7AE"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="72" y1="60" x2="348" y2="336" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF6E8"/>
+      <stop offset="1" stop-color="#FFE3BF"/>
+    </linearGradient>
+    <linearGradient id="star" x1="112" y1="92" x2="312" y2="304" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFBC68"/>
+      <stop offset="0.55" stop-color="#FF7A00"/>
+      <stop offset="1" stop-color="#F04A00"/>
+    </linearGradient>
+    <linearGradient id="line" x1="506" y1="246" x2="1456" y2="246" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9A3D"/>
+      <stop offset="1" stop-color="#E15900"/>
+    </linearGradient>
+    <filter id="shadow" x="38" y="30" width="1524" height="360" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feOffset dy="16"/>
+      <feGaussianBlur stdDeviation="18"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.2235 0 0 0 0 0.1294 0 0 0 0 0.051 0 0 0 0.12 0"/>
+    </filter>
+    <filter id="glow" x="82" y="64" width="260" height="260" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 0.55 0 0 0  0 0.16 0 0 0  0 0 0 0.36 0"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="48" width="1488" height="320" rx="46" fill="url(#bg)"/>
+  </g>
+  <rect x="56" y="48" width="1488" height="320" rx="46" stroke="#1F130C" stroke-opacity="0.08"/>
+
+  <g opacity="0.34" stroke="#F2A14F" stroke-width="1.5">
+    <path d="M480 118H1510"/>
+    <path d="M480 304H1510"/>
+    <path d="M630 78V338"/>
+    <path d="M1090 78V338"/>
+  </g>
+
+  <g>
+    <rect x="84" y="76" width="280" height="264" rx="40" fill="url(#panel)"/>
+    <rect x="84" y="76" width="280" height="264" rx="40" stroke="#24130A" stroke-opacity="0.08"/>
+
+    <g opacity="0.44" stroke="#F08B24" stroke-width="3">
+      <path d="M126 208H322"/>
+      <path d="M224 110V306"/>
+      <path d="M154 138L294 278"/>
+      <path d="M294 138L154 278"/>
+    </g>
+
+    <path d="M224 92L245 167L320 188L245 209L224 284L203 209L128 188L203 167L224 92Z" fill="#FF9120" opacity="0.28" filter="url(#glow)"/>
+    <path d="M224 92L245 167L320 188L245 209L224 284L203 209L128 188L203 167L224 92Z" fill="url(#star)"/>
+    <path d="M224 116L239 173L296 188L239 203L224 260L209 203L152 188L209 173L224 116Z" fill="#FFE7C6" fill-opacity="0.88"/>
+    <circle cx="224" cy="188" r="18" fill="#26160E" fill-opacity="0.14"/>
+
+    <g fill="#18374D" fill-opacity="0.86" font-family="SF Pro Display, Segoe UI, Arial, sans-serif" font-weight="700">
+      <text x="112" y="145" font-size="26">&lt;/&gt;</text>
+      <text x="296" y="145" font-size="22">AI</text>
+      <text x="110" y="250" font-size="20">SSH</text>
+      <text x="286" y="250" font-size="20">WEB</text>
+    </g>
+
+    <g fill="#FF9B43">
+      <circle cx="128" cy="116" r="7"/>
+      <circle cx="320" cy="116" r="7"/>
+      <circle cx="128" cy="260" r="7"/>
+      <circle cx="320" cy="260" r="7"/>
+    </g>
+  </g>
+
+  <g fill="#153A57" font-family="SF Pro Display, Segoe UI, Arial, sans-serif">
+    <text x="444" y="170" font-size="124" font-weight="800" letter-spacing="-4">Generic Coder</text>
+    <text x="452" y="246" font-size="54" font-weight="650" letter-spacing="-1.2">SOLO-style Code Maintenance Cockpit</text>
+    <text x="454" y="298" font-size="30" font-weight="600" fill="#4E6780">Powered by the GenericAgent foundation</text>
+  </g>
+
+  <rect x="446" y="198" width="1014" height="8" rx="4" fill="url(#line)"/>
+</svg>

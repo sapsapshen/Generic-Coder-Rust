@@ -1,0 +1,74 @@
+{
+  "skills": {
+    "code-review": {
+      "name": "code-review",
+      "display_name": "Code Review",
+      "description": "Code Review — Systematic Code Review Workflow",
+      "source_url": "",
+      "version": "1.0.0",
+      "enabled": true,
+      "installed_at": "2026-05-03T23:42:06.147032+00:00",
+      "updated_at": "2026-05-03T23:42:06.147032+00:00",
+      "files": [
+        "README.md"
+      ],
+      "file_count": 1
+    },
+    "webfetch": {
+      "name": "webfetch",
+      "display_name": "Webfetch",
+      "description": "WebFetch — Web Content Retrieval & Analysis",
+      "source_url": "",
+      "version": "1.0.0",
+      "enabled": true,
+      "installed_at": "2026-05-03T23:42:06.147032+00:00",
+      "updated_at": "2026-05-03T23:42:06.147032+00:00",
+      "files": [
+        "README.md"
+      ],
+      "file_count": 1
+    },
+    "file-search": {
+      "name": "file-search",
+      "display_name": "File Search",
+      "description": "File Search — Deep Codebase Exploration",
+      "source_url": "",
+      "version": "1.0.0",
+      "enabled": true,
+      "installed_at": "2026-05-03T23:42:06.147032+00:00",
+      "updated_at": "2026-05-03T23:42:06.147032+00:00",
+      "files": [
+        "README.md"
+      ],
+      "file_count": 1
+    },
+    "create-skill": {
+      "name": "create-skill",
+      "display_name": "Create Skill",
+      "description": "Create Skill — Meta-Skill for Crafting New Agent Skills",
+      "source_url": "",
+      "version": "1.0.0",
+      "enabled": true,
+      "installed_at": "2026-05-03T23:42:06.147032+00:00",
+      "updated_at": "2026-05-03T23:42:06.147032+00:00",
+      "files": [
+        "README.md"
+      ],
+      "file_count": 1
+    },
+    "self-audit": {
+      "name": "self-audit",
+      "display_name": "Self Audit",
+      "description": "Self Audit — Agent Self-Reflection & Improvement",
+      "source_url": "",
+      "version": "1.0.0",
+      "enabled": true,
+      "installed_at": "2026-05-03T23:42:06.147032+00:00",
+      "updated_at": "2026-05-03T23:42:06.147032+00:00",
+      "files": [
+        "README.md"
+      ],
+      "file_count": 1
+    }
+  }
+}

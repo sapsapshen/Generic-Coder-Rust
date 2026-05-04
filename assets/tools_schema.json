@@ -1,0 +1,186 @@
+[
+  {"type": "function", "function": {
+    "name": "code_run",
+    "description": "Code executor. Prefer python. Multi-call OK, use script param. Reply code block is executed if no script arg; prefer for single call to avoid escaping. No hardcoding bulk data",
+    "parameters": {"type": "object", "properties": {
+      "script": {"type": "string", "description": "[Mutually exclusive] NEVER use this param when use reply code block."},
+      "type": {"type": "string", "enum": ["python", "powershell"], "description": "Code type", "default": "python"},
+      "timeout": {"type": "integer", "description": "in seconds", "default": 60},
+      "cwd": {"type": "string", "description": "Working directory, defaults to cwd"},
+      "inline_eval": {"type": "boolean", "description": "DO NOT USE except explicitly specified."}}}
+  }},
+  {"type": "function", "function": {
+    "name": "file_read",
+    "description": "Read file. Read before modify for latest context and line numbers",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Relative or absolute"},
+      "start": {"type": "integer", "description": "Start line number (1-based)"},
+      "count": {"type": "integer", "description": "Number of lines to read", "default": 200},
+      "keyword": {"type": "string", "description": "[Optional] If provided, returns first match (case-insensitive) with context"},
+      "show_linenos": {"type": "boolean", "description": "Show line numbers", "default": true}}}
+  }},
+  {"type": "function", "function": {
+    "name": "file_patch",
+    "description": "Replace unique old_content with new_content. Exact match required (whitespace/indentation). On failure, file_read to recheck",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "File path"},
+      "old_content": {"type": "string", "description": "Original text block to replace (must be unique)"},
+      "new_content": {"type": "string", "description": "New content. Supports {{file:path:startLine:endLine}} to ref file lines, auto-expanded"}}}
+  }},
+  {"type": "function", "function": {
+    "name": "file_write",
+    "description": "Create/overwrite/append files. HUGE edits ONLY. Content must in <file_content>...</file_content> in reply body BEFORE the file_write call (not args). Supports {{file:path:startLine:endLine}}, auto-expanded",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "File path"},
+      "mode": {"type": "string", "enum": ["overwrite", "append", "prepend"], "description": "Write mode", "default": "overwrite"}}}
+  }},
+  {"type": "function", "function": {
+    "name": "web_scan",
+    "description": "Get simplified HTML and tab list. Removes hidden/floating/covered elements. Call after switching pages",
+    "parameters": {"type": "object", "properties": {
+      "tabs_only": {"type": "boolean", "description": "Show tab list only, no HTML"},
+      "switch_tab_id": {"type": "string", "description": "[Optional] Tab ID to switch to"},
+      "text_only": {"type": "boolean", "description": "Plain text only, no HTML"}}}
+  }},
+  {"type": "function", "function": {
+    "name": "web_execute_js",
+    "description": "Execute JS. Multi-call OK with different switch_tab_id. No guessing. Act accurately to reduce web_scan calls. Execute JS in ```javascript blocks if no script arg, prefer to avoid escaping",
+    "parameters": {"type": "object", "properties": {
+      "script": {"type": "string", "description": "[Mutually exclusive] JS code or script path. NEVER use this param when use reply code block"},
+      "save_to_file": {"type": "string", "description": "file path; **only** for long result"},
+      "no_monitor": {"type": "boolean", "description": "Skip page change monitoring, saves 2-3s. Only for reads, not for page actions"},
+      "switch_tab_id": {"type": "string", "description": "[Optional] Tab ID to switch to before executing"}}}
+  }},
+  {"type": "function", "function": {
+    "name": "update_working_checkpoint",
+    "description": "Short-term working notepad, auto-injected each turn to prevent info loss in long tasks. Call during early/mid stages, not at end. When: (1) after reading SOP, store user needs & key constraints (skip for simple 1-2 step tasks); (2) before subtask switch or context flush; (3) after repeated failures, re-read SOP and must store new findings; (4) on new task, update content, clear old progress but keep valid constraints.\n\nDon't call: simple tasks (1-2 steps), task completed (use long-term memory tool)",
+    "parameters": {"type": "object", "properties": {
+      "key_info": {"type": "string", "description": "Replaces current notepad (<200 tokens). Incremental update: review existing, keep valid, add/remove/modify. Store: pitfalls, user requirements, key params/findings, file paths, progress, next steps. Don't store: ephemeral info, obvious context, old task info when user switched tasks. Prefer over-updating over losing key info"},
+      "related_sop": {"type": "string", "description": "Related SOP names, tips for further re-read"}}}
+  }},
+  {"type": "function", "function": {
+    "name": "ask_user",
+    "description": "Interrupt task to ask user when needing decisions, extra info, or facing unresolvable blockers",
+    "parameters": {"type": "object", "properties": {
+      "question": {"type": "string", "description": "Question for the user"},
+      "candidates": {"type": "array", "items": {"type": "string"}, "description": "Optional quick-select choices for the user"}}}
+  }},
+  {"type": "function", "function": {
+    "name": "start_long_term_update",
+    "description": "Start distilling long-term memory. Call when discovering info worth remembering (env facts/user prefs/lessons learned). Skip if memory already updated or in autonomous flow. Must call when a task that took 15+ turns is completed",
+    "parameters": {"type": "object", "properties": {}}}
+  },
+  {"type": "function", "function": {
+    "name": "workspace_open",
+    "description": "Open a local folder as the active workspace. Use to explore project directories, browse codebases, and get file tree overview.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Absolute path to the folder to open as workspace."}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "workspace_list",
+    "description": "List files and folders in the workspace or a specific path. Supports glob pattern filtering.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Path to list. Defaults to active workspace root."},
+      "pattern": {"type": "string", "description": "Glob pattern to filter files, e.g. *.py or *.md."}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "workspace_search",
+    "description": "Search for files by name within the workspace. Use when you only know part of a filename.",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "Search query matching against file names."},
+      "path": {"type": "string", "description": "Directory to search. Defaults to active workspace root."}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "remote_connect",
+    "description": "Connect to a remote server via SSH. Use before remote_exec, remote_file_read/write. Supports key and password auth.",
+    "parameters": {"type": "object", "properties": {
+      "name": {"type": "string", "description": "Connection name, auto-generated if host provided."},
+      "host": {"type": "string", "description": "Server hostname or IP."},
+      "port": {"type": "integer", "description": "SSH port, default 22.", "default": 22},
+      "username": {"type": "string", "description": "SSH username.", "default": "root"},
+      "password": {"type": "string", "description": "SSH password. Prefer key_path."},
+      "key_path": {"type": "string", "description": "Path to SSH private key."}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "remote_exec",
+    "description": "Execute a shell command on a connected remote server with streaming output.",
+    "parameters": {"type": "object", "properties": {
+      "command": {"type": "string", "description": "Shell command to execute remotely."},
+      "server": {"type": "string", "description": "Server name. Omit to use first active connection."},
+      "timeout": {"type": "integer", "description": "Timeout seconds.", "default": 60},
+      "cwd": {"type": "string", "description": "Remote working directory."}},
+      "required": ["command"]}}},
+  {"type": "function", "function": {
+    "name": "remote_file_read",
+    "description": "Read a file from a connected remote server.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Absolute path on remote server."},
+      "server": {"type": "string", "description": "Server name. Omit to use first active connection."}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "remote_file_write",
+    "description": "Write content to a file on a connected remote server.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Absolute path on remote server."},
+      "content": {"type": "string", "description": "Content to write."},
+      "server": {"type": "string", "description": "Server name. Omit to use first active connection."}},
+      "required": ["path", "content"]}}},
+  {"type": "function", "function": {
+    "name": "remote_list_dir",
+    "description": "List directory contents on a connected remote server.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Remote directory path.", "default": "."},
+      "server": {"type": "string", "description": "Server name. Omit to use first active connection."}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "media_info",
+    "description": "Get detailed info about a media file: type, size, dimensions, duration, format, pages. Works with images, videos, audio, PDF, documents, archives.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Path to the media file."}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "content_search",
+    "description": "Search file contents by regex pattern (powered by ripgrep). Essential for exploring codebases: find function defs, usages, TODOs, etc.",
+    "parameters": {"type": "object", "properties": {
+      "pattern": {"type": "string", "description": "Regex pattern to search for."},
+      "path": {"type": "string", "description": "Directory or file to search. Defaults to workspace root or cwd."},
+      "glob": {"type": "string", "description": "Filename glob filter, e.g. *.py or **/*.js."},
+      "context_lines": {"type": "integer", "description": "Lines of context around each match.", "default": 2},
+      "max_results": {"type": "integer", "description": "Max matches to return.", "default": 50},
+      "case_sensitive": {"type": "boolean", "description": "Case-sensitive search.", "default": true}},
+      "required": ["pattern"]}}},
+  {"type": "function", "function": {
+    "name": "git_status",
+    "description": "Show working tree status (porcelain format). See what files are modified, staged, or untracked.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Repo path. Defaults to workspace root or cwd."}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "git_diff",
+    "description": "Show git diff of working tree changes. Use to review what the agent (or user) has modified before committing.",
+    "parameters": {"type": "object", "properties": {
+      "staged": {"type": "boolean", "description": "Show staged changes instead of unstaged.", "default": false},
+      "path": {"type": "string", "description": "File or directory to diff. Omit for all."},
+      "path_repo": {"type": "string", "description": "Repo path. Defaults to workspace root or cwd."}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "git_log",
+    "description": "Show recent commit history.",
+    "parameters": {"type": "object", "properties": {
+      "count": {"type": "integer", "description": "Number of recent commits.", "default": 10},
+      "path_repo": {"type": "string", "description": "Repo path. Defaults to workspace root or cwd."}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "file_revert",
+    "description": "Revert a file to its most recent backup (created automatically before file_patch/file_write). Use when agent modifications went wrong.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "File path to revert."}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "media_extract",
+    "description": "Extract content from media: text from PDF/DOCX/XLSX, preview thumbnail from images/videos, or full metadata.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Path to the media file."},
+      "type": {"type": "string", "enum": ["text", "preview", "info"], "description": "text=readable content, preview=thumbnail, info=metadata", "default": "text"}},
+      "required": ["path"]}}}
+]

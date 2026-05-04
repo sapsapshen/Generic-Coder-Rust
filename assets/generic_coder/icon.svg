@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="gc-bg" x1="28" y1="20" x2="220" y2="236" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF6E8"/>
+      <stop offset="1" stop-color="#FFD6A8"/>
+    </linearGradient>
+    <linearGradient id="gc-star" x1="68" y1="40" x2="188" y2="216" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB45A"/>
+      <stop offset="0.55" stop-color="#FF7A00"/>
+      <stop offset="1" stop-color="#F14D00"/>
+    </linearGradient>
+    <filter id="gc-glow" x="24" y="24" width="208" height="208" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 0.55 0 0 0  0 0.15 0 0 0  0 0 0 0.42 0"/>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="56" fill="url(#gc-bg)"/>
+  <rect x="12" y="12" width="232" height="232" rx="56" stroke="#24130A" stroke-opacity="0.08"/>
+  <path d="M128 46L146 110L210 128L146 146L128 210L110 146L46 128L110 110L128 46Z" fill="#FF8E1A" opacity="0.32" filter="url(#gc-glow)"/>
+  <path d="M128 46L146 110L210 128L146 146L128 210L110 146L46 128L110 110L128 46Z" fill="url(#gc-star)"/>
+  <path d="M128 67L141 115L189 128L141 141L128 189L115 141L67 128L115 115L128 67Z" fill="#FFE5C2" fill-opacity="0.82"/>
+  <circle cx="128" cy="128" r="15" fill="#23130B" fill-opacity="0.16"/>
+</svg>

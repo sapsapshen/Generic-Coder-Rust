@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Generic Coder</title>
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+    <script>
+      try {
+        const theme = window.localStorage.getItem('generic-coder-theme');
+        if (theme) {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch {}
+    </script>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="nav-panel">
+        <div class="brand-block">
+          <img class="brand-icon" src="/static/icon.svg" alt="Generic Coder icon" />
+          <div class="brand-title">Generic Coder</div>
+        </div>
+
+        <nav class="action-menu" aria-label="Primary actions">
+          <button class="menu-button menu-button--primary" id="new-chat-button" type="button" data-i18n="newChat">新建会话</button>
+          <button class="menu-button" id="session-button" type="button" data-i18n="sessions">恢复会话</button>
+          <button class="menu-button" id="stop-button" type="button" data-i18n="stop">停止生成</button>
+          <button class="menu-button" id="plan-button" type="button">Plan Mode</button>
+          <button class="menu-button" id="settings-button" type="button" data-i18n="settings">设置</button>
+        </nav>
+
+        <div id="plan-progress" class="plan-progress" hidden>
+          <div class="plan-progress__bar">
+            <div class="plan-progress__fill" id="plan-fill"></div>
+          </div>
+          <span class="plan-progress__text" id="plan-text"></span>
+        </div>
+
+        <section class="menu-section menu-section--tree">
+          <div class="tree-header">
+            <span class="tree-title">Workspace</span>
+            <button type="button" id="refresh-tree-button" class="tree-refresh-btn" title="Refresh">↻</button>
+          </div>
+          <div id="workspace-tree" class="workspace-tree">
+            <div class="tree-empty">No workspace open</div>
+          </div>
+        </section>
+
+        <section class="menu-section menu-section--context" id="context-section">
+          <details class="context-details">
+            <summary class="context-summary">Agent Context</summary>
+            <div class="context-info" id="context-info">
+              <div class="context-row"><span class="context-label">Mode</span><span class="context-value" id="ctx-mode">-</span></div>
+              <div class="context-row"><span class="context-label">Target</span><span class="context-value" id="ctx-target">-</span></div>
+              <div class="context-row"><span class="context-label">Model</span><span class="context-value" id="ctx-model">-</span></div>
+              <div class="context-row"><span class="context-label">Turns</span><span class="context-value" id="ctx-turns">-</span></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="menu-section menu-section--workflow">
+          <details class="context-details" open>
+            <summary class="context-summary">Workflow</summary>
+            <div class="workflow-section">
+              <div class="workflow-mode-row">
+                <button class="workflow-mode-btn workflow-mode-btn--work" data-mode="work" title="Execute">Work</button>
+                <button class="workflow-mode-btn workflow-mode-btn--plan" data-mode="plan" title="Plan">Plan</button>
+                <button class="workflow-mode-btn workflow-mode-btn--review" data-mode="review" title="Review">Review</button>
+              </div>
+              <div id="workflow-pipeline" class="workflow-pipeline">
+                <div class="workflow-empty">Add modes to build a pipeline</div>
+              </div>
+              <div class="workflow-actions">
+                <button id="workflow-reset-button" class="workflow-action-btn" hidden>Clear</button>
+                <button id="workflow-save-button" class="workflow-action-btn workflow-action-btn--primary" hidden>Apply</button>
+              </div>
+              <div id="workflow-validation" class="workflow-validation" hidden></div>
+              <div id="workflow-active" class="workflow-active-indicator" hidden></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="menu-section menu-section--status">
+          <div class="status-card">
+            <span class="status-dot" id="status-dot"></span>
+            <div>
+              <strong id="status-label">Idle</strong>
+              <div id="model-label">Model offline</div>
+            </div>
+          </div>
+          <div class="meta-stack">
+            <span class="glass-badge" id="theme-pill">-</span>
+            <span class="glass-badge" id="language-pill">-</span>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main-stage">
+        <section class="chat-surface">
+          <div class="chat-toolbar">
+            <div class="toolbar-brand">
+              <img class="toolbar-icon" src="/static/icon.svg" alt="Generic Coder icon" />
+              <div class="toolbar-brand__title">Generic Coder</div>
+            </div>
+            <div class="chat-toolbar__tabs" id="session-tabs">
+              <span class="session-tab is-active" data-session="current">Chat</span>
+            </div>
+            <div class="chat-toolbar__actions">
+              <div class="turn-progress" id="turn-progress" hidden>
+                <span class="turn-progress__label" id="turn-label"></span>
+                <div class="turn-progress__track"><div class="turn-progress__fill" id="turn-fill"></div></div>
+              </div>
+              <span class="glass-badge glass-badge--count" id="message-count">0</span>
+            </div>
+          </div>
+
+          <div id="chat-feed" class="chat-feed" aria-live="polite"></div>
+
+          <div id="changes-panel" class="changes-panel" hidden>
+            <div class="changes-panel__header">
+              <span class="changes-panel__title">File Changes</span>
+              <div class="changes-panel__actions">
+                <button type="button" id="refresh-changes-button" class="changes-panel__btn">Refresh</button>
+                <button type="button" id="toggle-changes-button" class="changes-panel__btn">Hide</button>
+              </div>
+            </div>
+            <div id="changes-list" class="changes-list"></div>
+            <div id="diff-view" class="diff-view" hidden></div>
+          </div>
+
+          <form id="composer-form" class="composer-shell">
+            <div class="composer-inner">
+              <textarea id="composer-input" rows="3" placeholder="输入消息" data-i18n-placeholder="composerPlaceholder"></textarea>
+              <button id="send-button" class="send-button" type="submit" data-i18n="send">发送</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="settings-dialog" class="settings-dialog">
+      <div class="settings-dialog__panel">
+        <div class="sessions-dialog__header">
+          <h3 data-i18n="settings">设置</h3>
+          <button type="button" id="close-settings" class="dialog-close" data-i18n="close">关闭</button>
+        </div>
+        <div class="settings-sections">
+          <section class="settings-section">
+            <h4 class="settings-section__title" data-i18n="modelSettings">模型设置</h4>
+            <div class="settings-grid settings-grid--columns">
+              <label class="settings-field">
+                <span data-i18n="commonModel">常见模型</span>
+                <select id="model-preset-select" class="theme-select" aria-label="Common Model"></select>
+              </label>
+              <label class="settings-field">
+                <span data-i18n="protocolPreset">协议预设</span>
+                <select id="protocol-preset-select" class="theme-select" aria-label="Protocol Preset"></select>
+              </label>
+              <label class="settings-field">
+                <span data-i18n="model">模型</span>
+                <select id="model-select" class="theme-select" aria-label="Model"></select>
+              </label>
+              <label class="settings-field">
+                <span data-i18n="sessionType">接入协议</span>
+                <select id="session-type-select" class="theme-select" aria-label="Session Type"></select>
+              </label>
+              <label class="settings-field">
+                <span data-i18n="provider">提供商</span>
+                <input id="provider-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="displayName">显示名</span>
+                <input id="display-name-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="modelName">模型名称</span>
+                <input id="model-name-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="baseUrl">Base URL</span>
+                <input id="base-url-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field settings-field--full">
+                <span data-i18n="apiKey">API Key</span>
+                <div class="settings-input-group">
+                  <input id="api-key-input" class="settings-input settings-input-group__input" type="password" />
+                  <button type="button" id="api-key-toggle" class="settings-input-group__toggle"></button>
+                </div>
+              </label>
+            </div>
+            <div class="settings-actions">
+              <button type="button" id="save-llm-settings" class="menu-button menu-button--primary" data-i18n="saveModelSettings">保存模型配置</button>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h4 class="settings-section__title" data-i18n="workspaceSettings">本地工作区</h4>
+            <div id="workspace-status" class="settings-status"></div>
+            <div class="settings-grid settings-grid--columns">
+              <label class="settings-field">
+                <span data-i18n="workspaceName">工作区名称</span>
+                <input id="workspace-name-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field settings-field--full">
+                <span data-i18n="workspacePath">工作目录</span>
+                <div class="settings-input-group">
+                  <input id="workspace-path-input" class="settings-input settings-input-group__input" type="text" />
+                  <button type="button" id="browse-workspace-path" class="settings-input-group__toggle" data-i18n="browseFolder">浏览</button>
+                </div>
+              </label>
+            </div>
+            <div class="settings-actions">
+              <button type="button" id="save-workspace-settings" class="menu-button" data-i18n="applyWorkspace">应用工作区</button>
+            </div>
+            <div id="workspace-list" class="settings-collection"></div>
+          </section>
+
+          <section class="settings-section">
+            <h4 class="settings-section__title" data-i18n="remoteSettings">远程工作环境</h4>
+            <div id="remote-status" class="settings-status"></div>
+            <label class="settings-toggle">
+              <input id="remote-enabled-input" type="checkbox" />
+              <span data-i18n="remoteMode">启用远程工作环境</span>
+            </label>
+            <div class="settings-grid settings-grid--columns">
+              <label class="settings-field">
+                <span data-i18n="remoteName">连接名称</span>
+                <input id="remote-name-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="host">主机</span>
+                <input id="remote-host-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="port">端口</span>
+                <input id="remote-port-input" class="settings-input" type="number" min="1" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="username">用户名</span>
+                <input id="remote-username-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="password">密码</span>
+                <input id="remote-password-input" class="settings-input" type="password" />
+              </label>
+              <label class="settings-field">
+                <span data-i18n="keyPath">密钥路径</span>
+                <input id="remote-key-path-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field settings-field--full">
+                <span data-i18n="remoteCwd">远程工作目录</span>
+                <input id="remote-cwd-input" class="settings-input" type="text" />
+              </label>
+            </div>
+            <div class="settings-actions">
+              <button type="button" id="connect-remote-button" class="menu-button" data-i18n="connectRemote">连接远程环境</button>
+            </div>
+            <div id="remote-config-list" class="settings-collection"></div>
+          </section>
+
+          <section class="settings-section">
+            <h4 class="settings-section__title">Skills</h4>
+            <div id="skills-status" class="settings-status"></div>
+            <div class="settings-grid settings-grid--columns skills-install-group">
+              <label class="settings-field settings-field--full">
+                <span>Install Skill URL</span>
+                <div class="settings-input-group">
+                  <input id="skill-url-input" class="settings-input settings-input-group__input" type="text" placeholder="https://github.com/user/skill-repo" />
+                  <button type="button" id="install-skill-button" class="settings-input-group__toggle">Install</button>
+                </div>
+              </label>
+            </div>
+            <div id="skills-list" class="skills-list"></div>
+          </section>
+
+          <section class="settings-section">
+            <h4 class="settings-section__title" data-i18n="interfaceSettings">界面</h4>
+            <div class="settings-grid settings-grid--columns">
+              <label class="settings-field">
+                <span data-i18n="theme">主题</span>
+                <select id="theme-select" class="theme-select" aria-label="Theme"></select>
+              </label>
+              <label class="settings-field">
+                <span data-i18n="language">语言</span>
+                <select id="language-select" class="theme-select" aria-label="Language"></select>
+              </label>
+            </div>
+          </section>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="sessions-dialog" class="sessions-dialog">
+      <div class="sessions-dialog__panel">
+        <div class="sessions-dialog__header">
+          <h3 data-i18n="sessionsTitle">可恢复会话</h3>
+          <button type="button" id="close-sessions" class="dialog-close" data-i18n="close">关闭</button>
+        </div>
+        <div id="sessions-list" class="sessions-list"></div>
+      </div>
+    </dialog>
+
+    <dialog id="command-palette" class="command-palette">
+      <div class="command-palette__panel">
+        <input id="command-search" class="command-search" type="text" placeholder="Type a command..." autocomplete="off" />
+        <div id="command-list" class="command-list"></div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+    <div id="last-reply-time" hidden>0</div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
