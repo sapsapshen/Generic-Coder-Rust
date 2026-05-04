@@ -716,14 +716,18 @@ async fn pick_workspace_folder(
     }
 
     let picked = tokio::task::spawn_blocking(move || -> Option<std::path::PathBuf> {
-        // Strategy 1: rfd (native Rust file dialog)
-        let rfd_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            rfd::FileDialog::new()
-                .set_title("Select workspace folder")
-                .pick_folder()
-        }));
-        if let Ok(Some(path)) = rfd_result {
-            return Some(path);
+        // Strategy 1: rfd (native Rust file dialog) — skip on macOS terminal
+        // because rfd panics+process-aborts when NSApplication isn't running.
+        #[cfg(not(target_os = "macos"))]
+        {
+            let rfd_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                rfd::FileDialog::new()
+                    .set_title("Select workspace folder")
+                    .pick_folder()
+            }));
+            if let Ok(Some(path)) = rfd_result {
+                return Some(path);
+            }
         }
 
         // Strategy 2: osascript on macOS (works from any terminal process)
@@ -744,9 +748,7 @@ async fn pick_workspace_folder(
                     }
                 }
                 // User cancelled (non-zero exit) → return None
-                if !out.status.success() {
-                    return None;
-                }
+                return None;
             }
         }
 
