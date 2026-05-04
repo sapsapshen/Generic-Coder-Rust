@@ -41,6 +41,10 @@ const state = {
   workflowNodes: [],
   workflowActive: false,
   workflowCurrentNode: 0,
+  multiAgentEnabled: false,
+  oneShotEnabled: false,
+  acpPlan: null,
+  acpActiveStep: -1,
 };
 
 const THEME_OPTIONS = ['solarflare', 'graphite', 'daybreak', 'paperink', 'obsidian', 'slate', 'oxide', 'noir', 'cobalt', 'borealis'];
@@ -1018,12 +1022,14 @@ function renderMessages() {
     const streaming = Boolean(message.streaming);
     const content = message.content || '';
     const isLong = !streaming && message.role === 'assistant' && (content.length > 3000 || content.split('\n').length > 50);
+    const acpHtml = message.acp ? renderAcpBlock(message.acp) : '';
     return `
       <article class="message-card ${roleClass}" data-message-len="${content.length}">
         <div class="message-card__meta">
           <span>${roleLabel(message.role)}</span>
           ${isLong ? '<span class="message-card__length-badge">Long output</span>' : ''}
         </div>
+        ${acpHtml}
         <div class="message-card__body-wrapper ${isLong ? 'message-card__body-wrapper--collapsed' : ''}">
           ${renderContent(content, streaming)}
         </div>
@@ -1519,6 +1525,118 @@ async function setMode(mode) {
   }
 }
 
+async function toggleMultiAgent() {
+  const checkbox = document.getElementById('multi-agent-checkbox');
+  const wantsEnabled = checkbox.checked;
+
+  // Disabling is always allowed
+  if (!wantsEnabled) {
+    state.multiAgentEnabled = false;
+    try {
+      await fetch('/api/multi-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      });
+    } catch (e) { /* ignore */ }
+    updateContextPreview();
+    return;
+  }
+
+  // Enabling: mutual exclusion — uncheck one-shot if enabled
+  if (state.oneShotEnabled) {
+    const osCheckbox = document.getElementById('one-shot-checkbox');
+    if (osCheckbox) osCheckbox.checked = false;
+    state.oneShotEnabled = false;
+    try {
+      await fetch('/api/one-shot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  // Enabling: check suitability against current prompt
+  const prompt = composerEl.value.trim();
+  if (!prompt) {
+    checkbox.checked = false;
+    showToast('Please type a task first, then enable Multi-Agent');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/multi-agent/suitable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+    const data = await res.json();
+    if (!data.suitable) {
+      checkbox.checked = false;
+      showToast(data.reason || 'This task is not suitable for multi-agent');
+      return;
+    }
+  } catch (e) {
+    checkbox.checked = false;
+    showToast('Failed to check multi-agent suitability');
+    return;
+  }
+
+  state.multiAgentEnabled = true;
+  try {
+    await fetch('/api/multi-agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+  } catch (e) { /* ignore */ }
+  updateContextPreview();
+}
+
+async function toggleOneShot() {
+  const checkbox = document.getElementById('one-shot-checkbox');
+  const wantsEnabled = checkbox.checked;
+
+  // Disabling is always allowed
+  if (!wantsEnabled) {
+    state.oneShotEnabled = false;
+    try {
+      await fetch('/api/one-shot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      });
+    } catch (e) { /* ignore */ }
+    updateContextPreview();
+    return;
+  }
+
+  // Enabling: mutual exclusion — uncheck multi-agent if enabled
+  if (state.multiAgentEnabled) {
+    const maCheckbox = document.getElementById('multi-agent-checkbox');
+    if (maCheckbox) maCheckbox.checked = false;
+    state.multiAgentEnabled = false;
+    try {
+      await fetch('/api/multi-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  state.oneShotEnabled = true;
+  try {
+    await fetch('/api/one-shot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+  } catch (e) { /* ignore */ }
+  updateContextPreview();
+}
+
 async function loadWorkflowState() {
   try {
     const res = await fetch('/api/workflow');
@@ -1592,6 +1710,18 @@ async function loadBootstrap() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ theme: resolvedTheme }),
     });
+  }
+  // Sync multi-agent toggle state from server
+  if (data.multi_agent_enabled !== undefined) {
+    state.multiAgentEnabled = data.multi_agent_enabled;
+    const checkbox = document.getElementById('multi-agent-checkbox');
+    if (checkbox) checkbox.checked = data.multi_agent_enabled;
+  }
+  // Sync one-shot toggle state from server
+  if (data.one_shot_enabled !== undefined) {
+    state.oneShotEnabled = data.one_shot_enabled;
+    const osCheckbox = document.getElementById('one-shot-checkbox');
+    if (osCheckbox) osCheckbox.checked = data.one_shot_enabled;
   }
 }
 
@@ -1766,16 +1896,137 @@ function addStreamingPlaceholder() {
   renderMessages();
 }
 
+// ── ACP Multi-Agent support ────────────────────────────────
+
+function extractAcpPayload(data) {
+  if (!data.acp_events || !Array.isArray(data.acp_events) || data.acp_events.length === 0) return null;
+
+  // Build aggregate ACP state from all events received so far
+  let plan = null;
+  let activeStep = null;
+  const completedSteps = {};
+  const failedSteps = {};
+  let done = null;
+
+  for (const ev of data.acp_events) {
+    if (!ev || !ev.acp_event) continue;
+    switch (ev.acp_event) {
+      case 'acp_plan':
+        plan = ev.plan || plan;
+        break;
+      case 'acp_step_start':
+        activeStep = { step_id: ev.step_id, role: ev.role, description: ev.description, running: true };
+        break;
+      case 'acp_step_done':
+        activeStep = null;
+        completedSteps[ev.step_id] = { step_id: ev.step_id, role: ev.role, summary: ev.summary };
+        break;
+      case 'acp_step_failed':
+        activeStep = null;
+        failedSteps[ev.step_id] = { step_id: ev.step_id, role: ev.role, error: ev.error };
+        break;
+      case 'acp_done':
+        plan = ev.plan || plan;
+        done = ev.summary || ev.plan?.task_summary || '';
+        break;
+    }
+  }
+
+  return {
+    plan,
+    activeStep,
+    completedSteps: Object.values(completedSteps),
+    failedSteps: Object.values(failedSteps),
+    done,
+  };
+}
+
+function roleEmoji(role) {
+  const map = { orchestrator: '\u{1F3AF}', searcher: '\u{1F50D}', planner: '\u{1F4CB}', coder: '\u{1F4BB}', reviewer: '\u{1F512}' };
+  return map[role] || '\u{25CF}';
+}
+
+function roleLabel(role) {
+  switch (role) {
+    case 'orchestrator': return 'Orchestrator';
+    case 'searcher': return 'Searcher';
+    case 'planner': return 'Planner';
+    case 'coder': return 'Coder';
+    case 'reviewer': return 'Reviewer';
+    default: return role;
+  }
+}
+
+function renderAcpBlock(acp) {
+  if (!acp) return '';
+
+  let html = '<div class="acp-block">';
+
+  // Plan card
+  if (acp.plan && acp.plan.steps && acp.plan.steps.length > 0) {
+    html += '<div class="acp-plan-card">';
+    html += `<div class="acp-plan-card__title">${escapeHtml(acp.plan.task_summary || 'Execution Plan')}</div>`;
+    html += '<div class="acp-plan-card__steps">';
+    for (const step of acp.plan.steps) {
+      const stepRole = typeof step.role === 'string' ? step.role : (step.role?.Orchestrator ? 'orchestrator' : 'coder');
+      html += `<div class="acp-step">
+        <span class="acp-step__role acp-step__role--${stepRole}">${roleEmoji(stepRole)} ${roleLabel(stepRole)}</span>
+        <span class="acp-step__desc">${escapeHtml(step.description || '')}</span>
+      </div>`;
+    }
+    html += '</div></div>';
+  }
+
+  // Active step banner
+  if (acp.activeStep) {
+    const r = acp.activeStep.role;
+    html += `<div class="acp-specialist-banner">
+      <span class="acp-specialist-banner__role acp-step__role--${r}">${roleEmoji(r)} ${roleLabel(r)}</span>
+      <span class="acp-specialist-banner__desc">${escapeHtml(acp.activeStep.description)}</span>
+      <span class="acp-specialist-banner__status">running...</span>
+    </div>`;
+  }
+
+  // Completed steps
+  for (const cs of (acp.completedSteps || [])) {
+    const r = cs.role;
+    html += `<div class="acp-step-done">
+      <span class="acp-step-done__role acp-step__role--${r}">${roleEmoji(r)} ${roleLabel(r)}</span>
+      <span class="acp-step-done__summary">${escapeHtml((cs.summary || '').slice(0, 200))}</span>
+    </div>`;
+  }
+
+  // Failed steps
+  for (const fs of (acp.failedSteps || [])) {
+    const r = fs.role;
+    html += `<div class="acp-step-failed">
+      <span class="acp-step__role acp-step__role--${r}">${roleEmoji(r)} ${roleLabel(r)}</span>
+      <span class="acp-step-failed__err">Failed: ${escapeHtml(fs.error || '')}</span>
+    </div>`;
+  }
+
+  // Done summary
+  if (acp.done) {
+    html += `<div class="acp-done">${escapeHtml(acp.done)}</div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
 async function pollTask(taskId) {
   try {
     while (true) {
       const res = await fetch(`/api/tasks/${taskId}`);
       const data = await res.json();
       if (typeof state.taskPlaceholderId === 'number') {
+        // Extract ACP events before rendering
+        const acpPayload = extractAcpPayload(data);
         state.messages[state.taskPlaceholderId] = {
           role: 'assistant',
           content: data.preview || '...',
           streaming: !data.done,
+          acp: acpPayload || undefined,
         };
         renderMessages();
       }
@@ -1867,7 +2118,14 @@ async function loadSessions() {
 
 async function stopTask() {
   await fetch('/api/stop', { method: 'POST' });
-  showToast(t('stopSent'));
+  // Immediately reset state and switch to fresh conversation
+  state.pendingTaskId = null;
+  state.taskPlaceholderId = null;
+  setRunning(false);
+  composerEl.value = '';
+  // Start a new chat session
+  await sendPrompt('/new');
+  composerEl.focus();
 }
 
 async function loadChanges() {
@@ -2496,8 +2754,8 @@ composerEl.addEventListener('keydown', async (event) => {
     }
   }
 
-  // Enter to send (without shift)
-  if (event.key === 'Enter' && !event.shiftKey && !(mentionState.active && mentionDropdown.classList.contains('is-active'))) {
+  // Enter to send (without shift). Skip during IME composition (e.g. pinyin confirming English input).
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !(mentionState.active && mentionDropdown.classList.contains('is-active'))) {
     event.preventDefault();
     await sendPrompt(composerEl.value);
   }
@@ -2535,6 +2793,18 @@ saveWorkspaceButton.addEventListener('click', saveWorkspace);
 browseWorkspacePathButton.addEventListener('click', browseWorkspacePath);
 connectRemoteButton.addEventListener('click', connectRemote);
 installSkillButton.addEventListener('click', installSkill);
+
+// ── Multi-agent toggle ────────────────────────────────────
+const multiAgentCheckbox = document.getElementById('multi-agent-checkbox');
+if (multiAgentCheckbox) {
+  multiAgentCheckbox.addEventListener('change', toggleMultiAgent);
+}
+
+// ── One-shot toggle ─────────────────────────────────────
+const oneShotCheckbox = document.getElementById('one-shot-checkbox');
+if (oneShotCheckbox) {
+  oneShotCheckbox.addEventListener('change', toggleOneShot);
+}
 
 // ── Workflow event listeners ─────────────────────────────
 document.querySelectorAll('.workflow-mode-btn').forEach((btn) => {

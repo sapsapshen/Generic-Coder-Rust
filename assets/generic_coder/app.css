@@ -2508,6 +2508,187 @@ button:focus-visible,
   font-weight: 500;
 }
 
+/* ── Multi-Agent Toggle ─────────────────────────────── */
+.multi-agent-toggle-row { padding: 0.5rem; border-top: 1px solid var(--panel-border); }
+.multi-agent-toggle { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.multi-agent-toggle__label { font-size: 12px; font-weight: 500; color: var(--text-1); }
+
+/* ── ACP Plan Card ───────────────────────────────────── */
+.acp-block { margin-bottom: 0.5rem; }
+.acp-plan-card {
+  border: 1px solid var(--accent-0);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--surface-bg);
+}
+.acp-plan-card__title { font-weight: 600; font-size: 13px; color: var(--text-0); margin-bottom: 0.5rem; }
+.acp-plan-card__steps { display: grid; gap: 0.35rem; }
+
+.acp-step { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0; font-size: 12px; }
+.acp-step__role {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.acp-step__role--orchestrator { background: #9C27B0; color: #fff; }
+.acp-step__role--searcher { background: #2196F3; color: #fff; }
+.acp-step__role--planner { background: #FF9800; color: #fff; }
+.acp-step__role--coder { background: #4CAF50; color: #fff; }
+.acp-step__role--reviewer { background: #E91E63; color: #fff; }
+.acp-step__desc { color: var(--text-1); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── ACP Specialist Banner ───────────────────────────── */
+.acp-specialist-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--accent-0);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.5rem;
+  animation: acp-pulse 2s ease-in-out infinite;
+}
+@keyframes acp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.acp-specialist-banner__role { font-size: 11px; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: var(--radius-sm); white-space: nowrap; text-transform: uppercase; }
+.acp-specialist-banner__desc { flex: 1; color: var(--text-0); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acp-specialist-banner__status { font-size: 11px; color: var(--accent-0); font-style: italic; }
+
+/* ── ACP Step Done ────────────────────────────────────── */
+.acp-step-done {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-left: 3px solid var(--accent-0);
+  background: var(--surface-bg);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: 0.25rem;
+  font-size: 12px;
+}
+.acp-step-done__role { font-size: 10px; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: var(--radius-sm); white-space: nowrap; text-transform: uppercase; }
+.acp-step-done__summary { color: var(--text-1); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── ACP Step Failed ──────────────────────────────────── */
+.acp-step-failed {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-left: 3px solid var(--err);
+  background: var(--surface-bg);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: 0.25rem;
+  font-size: 12px;
+}
+.acp-step-failed__err { color: var(--err); font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── ACP Done ─────────────────────────────────────────── */
+.acp-done {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+  color: var(--text-1);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ── One Shot Events ───────────────────────────────────── */
+.oneshot-cycle-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--badge-info-bg);
+  color: var(--badge-info-fg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.oneshot-option-list {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.4rem 0;
+}
+
+.oneshot-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-bg);
+  font-size: 12px;
+}
+
+.oneshot-option--selected {
+  border-left: 3px solid var(--accent-0);
+  background: var(--surface-elevated);
+}
+
+.oneshot-option__dir {
+  color: var(--text-0);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oneshot-option__score {
+  font-size: 10px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+}
+
+.oneshot-exhausted-banner {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--badge-warn-bg);
+  border: 1px solid var(--badge-warn-fg);
+  color: var(--badge-warn-fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.oneshot-executing-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-bg);
+  border-left: 3px solid var(--accent-0);
+  font-size: 12px;
+  color: var(--text-0);
+}
+
+.oneshot-roadblock-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--badge-error-bg);
+  border-left: 3px solid var(--err);
+  font-size: 12px;
+  color: var(--err);
+}
+
+.oneshot-done-banner {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--badge-status-bg);
+  color: var(--badge-status-fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 1080px) {
   body { overflow: auto; }

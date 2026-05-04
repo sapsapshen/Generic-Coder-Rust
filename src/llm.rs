@@ -2319,7 +2319,7 @@ impl ToolClient {
         let mut errors: Vec<String> = Vec::new();
 
         let tool_re = Regex::new(
-            r"<(?:tool_use|tool_call)>((?:(?!<(?:tool_use|tool_call)>).){15,}?)</(?:tool_use|tool_call)>",
+            r"<(?:tool_use|tool_call)>(.{15,}?)</(?:tool_use|tool_call)>",
         )
         .unwrap();
         let tool_all: Vec<String> = tool_re
@@ -2691,7 +2691,7 @@ pub fn parse_text_tool_calls(content: &str) -> (Vec<ToolCall>, String) {
 
     // Try XML tags
     let tool_re = Regex::new(
-        r"<(?:tool_use|tool_call)>((?:(?!<(?:tool_use|tool_call)>).){15,}?)</(?:tool_use|tool_call)>",
+        r"<(?:tool_use|tool_call)>(.{15,}?)</(?:tool_use|tool_call)>",
     )
     .unwrap();
     for caps in tool_re.captures_iter(&remaining) {

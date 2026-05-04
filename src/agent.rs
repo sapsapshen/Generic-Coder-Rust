@@ -224,6 +224,8 @@ pub struct GenericAgent {
     pub verbose: bool,
     pub agent_mode: RwLock<AgentMode>,
     pub agent_workflow: RwLock<Workflow>,
+    pub multi_agent_enabled: RwLock<bool>,
+    pub one_shot_enabled: RwLock<bool>,
 }
 
 impl GenericAgent {
@@ -238,7 +240,39 @@ impl GenericAgent {
             verbose: true,
             agent_mode: RwLock::new(AgentMode::Work),
             agent_workflow: RwLock::new(Workflow::default()),
+            multi_agent_enabled: RwLock::new(false),
+            one_shot_enabled: RwLock::new(false),
         }
+    }
+
+    /// Check if multi-agent collaboration is enabled
+    pub fn is_multi_agent(&self) -> bool {
+        *self.multi_agent_enabled.read().unwrap()
+    }
+
+    /// Enable multi-agent mode
+    pub fn enable_multi_agent(&self) {
+        *self.multi_agent_enabled.write().unwrap() = true;
+    }
+
+    /// Disable multi-agent mode (back to single-agent)
+    pub fn disable_multi_agent(&self) {
+        *self.multi_agent_enabled.write().unwrap() = false;
+    }
+
+    /// Set multi-agent enabled/disabled
+    pub fn set_multi_agent(&self, enabled: bool) {
+        *self.multi_agent_enabled.write().unwrap() = enabled;
+    }
+
+    /// Check if One Shot autonomous mode is enabled
+    pub fn is_one_shot(&self) -> bool {
+        *self.one_shot_enabled.read().unwrap()
+    }
+
+    /// Set One Shot enabled/disabled
+    pub fn set_one_shot(&self, enabled: bool) {
+        *self.one_shot_enabled.write().unwrap() = enabled;
     }
 
     fn client(&self) -> Option<Arc<TokioRwLock<dyn LlmClient>>> {
@@ -434,6 +468,7 @@ impl GenericAgent {
                 70,
                 true,
                 output_tx,
+                None,
             )
             .await;
             let final_output = exit_reason
@@ -512,6 +547,37 @@ impl GenericAgent {
         *handler.write().unwrap().workflow.write().unwrap() = self.agent_workflow.read().unwrap().clone();
         self.handler = Some(handler.clone());
 
+        // ── Multi-agent ACP execution ────────────────────────────────
+        if self.is_multi_agent() {
+            crate::acp::run_acp_task(
+                client,
+                query,
+                handler.clone(),
+                tools_schema,
+                display_tx.clone(),
+                self.verbose,
+            )
+            .await;
+            self.is_running.store(false, Ordering::SeqCst);
+            return;
+        }
+
+        // ── One Shot autonomous execution ────────────────────────────
+        if self.is_one_shot() {
+            crate::oneshot::run_one_shot_task(
+                client,
+                query,
+                handler.clone(),
+                tools_schema,
+                display_tx.clone(),
+                sys_prompt,
+                self.verbose,
+            )
+            .await;
+            self.is_running.store(false, Ordering::SeqCst);
+            return;
+        }
+
         // ── Workflow execution ──────────────────────────────────────
         let workflow_active = { handler.read().unwrap().workflow.read().unwrap().active };
         if workflow_active {
@@ -583,6 +649,7 @@ impl GenericAgent {
                     max_turns,
                     verbose,
                     output_tx,
+                    Some(self.stop_sig.clone()),
                 )
                 .await;
 
@@ -674,6 +741,7 @@ impl GenericAgent {
             max_turns,
             verbose,
             output_tx,
+            Some(self.stop_sig.clone()),
         )
         .await;
 
@@ -757,7 +825,7 @@ impl AgentHandler {
     }
 
     /// Record an error to persistent memory. Called from every dispatch error path.
-    fn record_error(&self, tool: &str, message: &str, severity: ErrorSeverity, context: Value) {
+    pub fn record_error(&self, tool: &str, message: &str, severity: ErrorSeverity, context: Value) {
         let turn = *self.current_turn.read().unwrap();
         let model = self.model_name.read().unwrap().clone();
         if let Err(e) = self.error_memory.record(tool, message, severity, context, &model, turn) {
@@ -1530,6 +1598,7 @@ pub async fn agent_runner_loop(
     max_turns: usize,
     verbose: bool,
     output_tx: mpsc::Sender<String>,
+    stop_signal: Option<Arc<AtomicBool>>,
 ) -> Result<HashMap<String, Value>> {
     use crate::types::ContentBlock;
 
@@ -1547,6 +1616,15 @@ pub async fn agent_runner_loop(
     });
 
     for turn in 0..max_turns {
+        // Check for stop signal before each turn
+        if stop_signal.as_ref().map_or(false, |s| s.load(Ordering::SeqCst)) {
+            let _ = output_tx.send("\n\n[ABORTED] Stopped by user.\n".to_string()).await;
+            let mut exit = HashMap::new();
+            exit.insert("reason".into(), Value::String("aborted".into()));
+            exit.insert("message".into(), Value::String("Stopped by user".into()));
+            exit.insert("final_output".into(), Value::String("[ABORTED]".into()));
+            return Ok(exit);
+        }
         *handler.write().unwrap().current_turn.write().unwrap() = turn;
 
         if verbose {
@@ -1783,6 +1861,7 @@ mod tests {
             5,
             false,
             output_tx,
+            None,
         )
         .await
         .unwrap();

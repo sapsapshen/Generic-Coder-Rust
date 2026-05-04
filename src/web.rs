@@ -48,6 +48,8 @@ pub struct PendingTask {
     pub preview: String,
     pub final_text: String,
     pub done: bool,
+    #[serde(default)]
+    pub acp_events: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +77,8 @@ pub struct AppState {
     error_memory: ErrorMemory,
     workflow: RwLock<Workflow>,
     current_mode: RwLock<AgentMode>,
+    multi_agent_enabled: RwLock<bool>,
+    one_shot_enabled: RwLock<bool>,
 }
 
 #[derive(Deserialize)]
@@ -558,6 +562,8 @@ async fn bootstrap(State(state): State<Arc<AppState>>) -> Json<Value> {
         "mode": mode_str,
         "workflow": serde_json::to_value(&workflow).unwrap_or_default(),
         "picker_token": state.workspace_picker_token.as_deref().unwrap_or(""),
+        "multi_agent_enabled": *state.multi_agent_enabled.read(),
+        "one_shot_enabled": *state.one_shot_enabled.read(),
     }))
 }
 
@@ -912,6 +918,7 @@ async fn chat(
             preview: "Starting task...".into(),
             final_text: String::new(),
             done: false,
+            acp_events: Vec::new(),
         },
     );
     state
@@ -930,11 +937,20 @@ async fn chat(
     let state_for_spawn = state.clone();
     tokio::spawn(async move {
         let mut preview = String::new();
+        let mut acp_events: Vec<serde_json::Value> = Vec::new();
         while let Some(item) = display_rx.recv().await {
             if let Some(next) = item.get("next").and_then(|value| value.as_str()) {
                 preview.push_str(next);
                 if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
                     entry.preview = preview.clone();
+                }
+            }
+            if let Some(acp) = item.get("acp") {
+                if !acp.is_null() {
+                    acp_events.push(acp.clone());
+                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
+                        entry.acp_events = acp_events.clone();
+                    }
                 }
             }
             if let Some(done) = item.get("done").and_then(|value| value.as_str()) {
@@ -986,6 +1002,7 @@ async fn task(State(state): State<Arc<AppState>>, Path(task_id): Path<String>) -
         "done": payload.done,
         "preview": payload.preview,
         "final": payload.final_text,
+        "acp_events": payload.acp_events,
     }))
 }
 
@@ -1407,6 +1424,164 @@ async fn reset_workflow(State(state): State<Arc<AppState>>) -> Json<Value> {
     Json(json!({"reset": true}))
 }
 
+async fn get_multi_agent(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let enabled = *state.multi_agent_enabled.read();
+    Json(json!({"enabled": enabled}))
+}
+
+async fn set_multi_agent(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<Value>,
+) -> Json<Value> {
+    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    if enabled && *state.one_shot_enabled.read() {
+        // If one_shot is also being disabled, allow it
+        let also_disable_one_shot = payload.get("disable_one_shot").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !also_disable_one_shot {
+            return Json(json!({"error": "不能同时启用 Multi-Agent 和 One Shot"}));
+        }
+    }
+    *state.multi_agent_enabled.write() = enabled;
+    state.agent.read().await.set_multi_agent(enabled);
+    Json(json!({"enabled": enabled}))
+}
+
+/// Heuristic: determine whether a prompt is suitable for multi-agent decomposition.
+/// Suitable prompts involve multiple steps, file exploration, implementation + review,
+/// or complex reasoning. Unsuitable prompts are trivial queries, single calculations,
+/// or very short commands.
+async fn check_multi_agent_suitable(
+    Json(payload): Json<Value>,
+) -> Json<Value> {
+    let prompt = payload
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    if prompt.is_empty() {
+        return Json(json!({"suitable": false, "reason": "no prompt provided"}));
+    }
+
+    let lower = prompt.to_lowercase();
+
+    // — unsuitability heuristics —
+    // Very short prompts (single trivial query)
+    let char_count = prompt.chars().count();
+    if char_count < 8 {
+        return Json(json!({
+            "suitable": false,
+            "reason": "prompt too short for multi-agent decomposition"
+        }));
+    }
+
+    // Pure calculation / single-answer queries
+    let trivial_patterns = [
+        "几点了", "现在几点", "今天星期", "今天日期",
+        "what time", "what day", "today's date",
+        "你好", "hello", "hi", "hey",
+        "谢谢", "thanks", "thank you",
+        "退出", "exit", "quit",
+        "帮助", "help",
+        "clear", "清除", "重置", "reset",
+    ];
+    for pat in &trivial_patterns {
+        if lower.contains(pat) {
+            return Json(json!({
+                "suitable": false,
+                "reason": "trivial query, no multi-agent needed"
+            }));
+        }
+    }
+
+    // Pure arithmetic without broader context
+    let arithmetic_only = lower
+        .chars()
+        .all(|c| c.is_ascii_digit() || "+-*/=×÷加减乘除等于".contains(c) || c.is_whitespace());
+    if arithmetic_only && !lower.contains("文件") && !lower.contains("代码") && !lower.contains("实现") {
+        return Json(json!({
+            "suitable": false,
+            "reason": "pure arithmetic doesn't benefit from multi-agent decomposition"
+        }));
+    }
+
+    // Multi-step structure patterns (user explicitly describes sequential steps)
+    let structural_patterns = [
+        "一个", "另一个", "第一步", "第二步", "首先", "然后", "接着", "最后",
+        "first", "then", "next", "finally",
+        "step 1", "step 2", "step1", "step2",
+        "之后", "再", "还要",
+    ];
+    for pat in &structural_patterns {
+        if lower.contains(pat) && char_count >= 15 {
+            return Json(json!({"suitable": true}));
+        }
+    }
+
+    // — suitability heuristics —
+    let suitable_keywords = [
+        "实现", "implement", "开发", "develop",
+        "重构", "refactor", "优化", "optimize",
+        "分析", "analyze", "审查", "review", "audit",
+        "搜索", "search", "查找", "find",
+        "修复", "fix", "调试", "debug",
+        "设计", "design", "架构", "architecture",
+        "测试", "test", "部署", "deploy",
+        "文档", "document", "迁移", "migrate",
+        "添加功能", "add feature", "添加特性",
+        "修改", "modify", "change", "更新", "update",
+        "创建", "create", "新建", "build",
+        "并", "and then", "然后", "之后",
+        "多个", "multiple", "全部", "all",
+    ];
+    let mut suitable = false;
+    for kw in &suitable_keywords {
+        if lower.contains(kw) {
+            suitable = true;
+            break;
+        }
+    }
+
+    // Complex enough (longer prompts are more likely multi-step)
+    if !suitable && char_count >= 60 {
+        suitable = true;
+    }
+
+    if suitable {
+        Json(json!({"suitable": true}))
+    } else {
+        Json(json!({
+            "suitable": false,
+            "reason": "prompt is too simple to benefit from multi-agent decomposition; try a task involving multiple steps or file/code operations"
+        }))
+    }
+}
+
+// ── One Shot API ──────────────────────────────────────────────────────────────
+
+async fn get_one_shot(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let enabled = *state.one_shot_enabled.read();
+    Json(json!({"enabled": enabled}))
+}
+
+async fn set_one_shot(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<Value>,
+) -> Json<Value> {
+    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    if enabled && *state.multi_agent_enabled.read() {
+        // If multi_agent is also being disabled, allow it
+        let also_disable_ma = payload.get("disable_multi_agent").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !also_disable_ma {
+            return Json(json!({"error": "不能同时启用 One Shot 和 Multi-Agent"}));
+        }
+    }
+    *state.one_shot_enabled.write() = enabled;
+    state.agent.read().await.set_one_shot(enabled);
+    Json(json!({"enabled": enabled}))
+}
+
 pub fn create_app(state: Arc<AppState>) -> Router {
     let assets_dir = state.project_dir.join("assets").join("generic_coder");
     Router::new()
@@ -1467,6 +1642,11 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/workflow", get(get_workflow))
         .route("/api/workflow", post(set_workflow))
         .route("/api/workflow/reset", post(reset_workflow))
+        .route("/api/multi-agent", get(get_multi_agent))
+        .route("/api/multi-agent", post(set_multi_agent))
+        .route("/api/multi-agent/suitable", post(check_multi_agent_suitable))
+        .route("/api/one-shot", get(get_one_shot))
+        .route("/api/one-shot", post(set_one_shot))
         .with_state(state)
 }
 
@@ -1514,6 +1694,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         error_memory: ErrorMemory::new(&config.project_dir),
         workflow: RwLock::new(Workflow::default()),
         current_mode: RwLock::new(AgentMode::Work),
+        multi_agent_enabled: RwLock::new(false),
+        one_shot_enabled: RwLock::new(false),
     });
 
     // Bootstrap preset skills (auto-register any new skill dirs in skills/)

@@ -11,7 +11,9 @@
 //! - `media` — Media file handler
 //! - `web` — Web UI server (Axum)
 
+pub mod acp;
 pub mod agent;
+pub mod oneshot;
 pub mod config;
 pub mod error_memory;
 pub mod llm;

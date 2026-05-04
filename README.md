@@ -1,48 +1,8 @@
 # Generic Coder (Rust)
 
-Rust-native coding cockpit with a built-in web UI, local workspace tools, Git review flows, SSH support, configurable LLM backends, workflow pipelines, and autonomous agent memory.
+Rust-native autonomous coding agent cockpit with a built-in web UI, local workspace tools, Git review flows, remote SSH support, configurable LLM backends, workflow pipelines, ACP multi-agent collaboration, and One Shot autonomous mode.
 
 **Language / Idioma / 语言:** [中文](#zh) | [English](#en) | [Español](#es)
-
----
-
-## Changelog / 更新日志 / Registro de cambios
-
-### 2026-05-03 → 2026-05-04 — Major Updates / 重大更新 / Grandes actualizaciones
-
-```mermaid
-timeline
-    title Generic Coder — Recent Evolution
-    section 2026-05-03
-      Rust Core : Agent Loop + LLM Backends : Web UI (Axum) : Tools & Workspace : Remote SSH
-    section 2026-05-04
-      Error Memory : Workflow Pipeline : Skills Manager : macOS Launcher : Autonomous Memory Stack
-```
-
-1. **Error Memory System / 错误记忆系统 / Sistema de memoria de errores**
-   - Persistent error classification with 5 severity levels (`critical`, `tool`, `system`, `validation`, `unknown`)
-   - Automatic fingerprinting (`tool:category`), count tracking, and LLM-aware avoidance hints injected into system prompts
-   - On-disk JSON persistence with retention policies
-
-2. **Workflow Pipeline / 工作流管道 / Pipeline de flujo de trabajo**
-   - Three agent modes: `WORK` (70 turns), `PLAN` (100 turns), `REVIEW` (50 turns)
-   - Drag-and-drop workflow builder supporting up to 3 sequential nodes
-   - Mode-specific system prompts, auto-advance, and consecutive-mode validation
-
-3. **Skills Manager / 技能管理器 / Gestor de habilidades**
-   - Pluggable `skills/` subsystem with `.meta.json` registry
-   - 5 preinstalled skills: `code-review`, `webfetch`, `file-search`, `create-skill`, `self-audit`
-   - Install/uninstall, enable/disable, and version tracking support
-
-4. **macOS One-Click Launcher / macOS 一键启动器 / Lanzador de un clic para macOS**
-   - `start-generic-coder.sh` with auto-build, health-check polling, and browser auto-open
-   - UUID-based picker token for secure local authentication
-   - Graceful fallback: `cargo run` → pre-built binary
-
-5. **Autonomous Memory Stack / 自主记忆栈 / Pila de memoria autónoma**
-   - L1-L4 layered memory architecture: insight index → fact store → task SOPs → raw sessions
-   - Plan mode with subagent delegation, adversarial verification, and failure loops
-   - Scheduled task system with scheduler-driven autonomous operation
 
 ---
 
@@ -58,9 +18,8 @@ graph TB
         GitV["Git Viewer"]
     end
 
-    subgraph Server["Rust Axum Server (src/web.rs)"]
+    subgraph Server["Axum Server (src/web.rs)"]
         Router["HTTP Router"]
-        WS["WebSocket"]
         Session["Session Store"]
         TaskQ["Task Queue"]
     end
@@ -68,61 +27,60 @@ graph TB
     subgraph Core["Agent Core"]
         Agent["Agent Loop (src/agent.rs)"]
         LLM["LLM Backends (src/llm.rs)"]
-        Workflow["Workflow Engine (src/workflow.rs)"]
-        Skills["Skills Manager (src/skills.rs)"]
+        ACP["Multi-Agent ACP (src/acp.rs)"]
+        OneShot["One Shot Auto (src/oneshot.rs)"]
+        Workflow["Workflow (src/workflow.rs)"]
+        Skills["Skills (src/skills.rs)"]
         ErrorMem["Error Memory (src/error_memory.rs)"]
     end
 
     subgraph Tools["Tool Layer"]
-        Workspace["Workspace (src/workspace.rs)"]
-        Remote["SSH Remote (src/remote.rs)"]
-        Shell["Shell/File Tools (src/tools.rs)"]
-        Media["Media Handler (src/media.rs)"]
-    end
-
-    subgraph Memory["Autonomous Memory"]
-        L1["L1: Insight Index"]
-        L2["L2: Fact Store"]
-        L3["L3: Task SOPs"]
-        L4["L4: Raw Sessions"]
+        Workspace["Workspace"]
+        Remote["SSH Remote"]
+        Shell["Shell/File Tools"]
+        Media["Media Handler"]
     end
 
     Frontend --> Router
-    Router --> WS
     Router --> Session
     Router --> TaskQ
     Agent --> LLM
+    Agent --> ACP
+    Agent --> OneShot
     Agent --> Workflow
     Agent --> Skills
     Agent --> ErrorMem
     Agent --> Tools
-    Agent --> Memory
     ErrorMem -->|"avoidance hints"| LLM
 ```
 
-### Module Map / 模块图 / Mapa de módulos
+### Module Map / 模块图
 
 ```mermaid
 graph LR
     subgraph src/
-        main[main.rs<br/>CLI + Serve]
-        web[web.rs<br/>Axum Server]
-        agent[agent.rs<br/>ReAct Loop]
-        llm[llm.rs<br/>Claude / OpenAI]
-        workflow[workflow.rs<br/>Work/Plan/Review]
-        skills[skills.rs<br/>Skills Registry]
-        error_memory[error_memory.rs<br/>Error Classifier]
-        tools[tools.rs<br/>Tool Implementations]
-        workspace[workspace.rs<br/>Workspace Mgr]
-        remote[remote.rs<br/>SSH Mgr]
-        media[media.rs<br/>Media Handler]
-        types[types.rs<br/>Shared Types]
-        config[config.rs<br/>Config Loader]
+        main[main.rs]
+        web[web.rs]
+        agent[agent.rs]
+        acp[acp.rs]
+        oneshot[oneshot.rs]
+        llm[llm.rs]
+        workflow[workflow.rs]
+        skills[skills.rs]
+        error_memory[error_memory.rs]
+        tools[tools.rs]
+        workspace[workspace.rs]
+        remote[remote.rs]
+        media[media.rs]
+        types[types.rs]
+        config[config.rs]
     end
 
     main --> web
     main --> agent
     agent --> llm
+    agent --> acp
+    agent --> oneshot
     agent --> workflow
     agent --> skills
     agent --> error_memory
@@ -151,6 +109,8 @@ Generic Coder：https://github.com/sapsapshen/Generic-Coder
 - 打开本地工作区、查看文件树、搜索文件
 - 查看 Git 变更、差异与回退信息
 - 连接远程 SSH 工作环境
+- **多智能体协作 (ACP)**：自动分解任务给 Searcher / Planner / Coder / Reviewer 按序执行
+- **One Shot 自主模式**：加载 brainstorming 技能，自动生成分支选项、选择最佳路径、遇到障碍重新发散，直到无新方向才停止
 
 当前推荐入口：
 
@@ -164,30 +124,42 @@ Generic Coder：https://github.com/sapsapshen/Generic-Coder
 http://127.0.0.1:8765
 ```
 
-### 2026-05-03 → 05-04 重大更新
+### 近期重大更新 (2026-05-03 → 05-04)
 
 | 模块 | 描述 |
 |------|------|
+| **ACP 多智能体** | Orchestrator 自动分解用户任务为 JSON 执行计划，Searcher → Planner → Coder → Reviewer 角色按序协作，全部 ACP 事件实时流传输到前端渲染 |
+| **One Shot 自主模式** | 加载 brainstorming 技能，外循环发散方向、内循环执行推进，遇障碍自动重新发散，seen_options 哈希集去重防循环，三重防耗尽机制 |
+| **停止按钮强化** | stop 信号直通 `agent_runner_loop` 每轮检查点，前端立即重置状态并切换新对话，不再等待正在进行的 LLM 请求返回 |
+| **拼音输入法修复** | Enter 键发送前检查 `KeyboardEvent.isComposing`，拼音候选词确认回车不再误触发消息发送 |
+| **多智能体适用性检测** | 勾选 Multi-Agent 时自动检查当前 prompt 是否适合多智能体（结构词、长度、复杂度等），不适合则弹出提示且无法勾选 |
 | **错误记忆系统** | 5级错误分类（critical/tool/system/validation/unknown），自动指纹识别（`tool:category`），计数追踪与回避提示注入 |
-| **工作流管道** | 三模式 Agent 管道（WORK 70轮/PLAN 100轮/REVIEW 50轮），拖拽式构建器，模式专属 system prompt |
-| **技能管理器** | 可插拔 skills/ 子系统，5个预装技能（code-review/webfetch/file-search/create-skill/self-audit） |
-| **macOS 启动器** | 一键启动脚本，自动构建+健康检查轮询+浏览器自动打开，UUID Picker Token 安全认证 |
-| **自主记忆栈** | L1-L4 四层记忆架构：索引→事实→SOP→原始会话，Plan 模式含 subagent 委托与对抗性验证 |
+| **工作流管道** | WORK/PLAN/REVIEW 三模式，可视化构建器，最多支持 3 个顺序节点，模式专属 system prompt |
+| **技能管理器** | 可插拔 `skills/` 子系统，6个预装技能（code-review / webfetch / file-search / create-skill / self-audit / brainstorming） |
+| **macOS 工作区选择** | osascript 回退方案，GUI 文件夹选择器在 macOS 上可用 |
+| **自主记忆栈** | L1-L4 四层记忆架构：索引→事实→SOP→原始会话，持久化可回顾 |
 
 ### 当前实现状态
 
-Rust 版本已经接管核心运行路径：
+Rust 版本已接管全部运行路径：
 
-- `src/main.rs`：CLI 与服务启动
-- `src/web.rs`：Web UI 后端
-- `src/agent.rs`：Agent 循环与任务执行
-- `src/llm.rs`：Claude / OpenAI 兼容 / 推理与流式解析
-- `src/workflow.rs`：Work/Plan/Review 三模式工作流
-- `src/error_memory.rs`：持久化错误记忆与回避提示
-- `src/skills.rs`：可插拔技能注册与管理
-- `src/tools.rs`、`src/workspace.rs`、`src/remote.rs`：工具、工作区、远程环境
-
-旧 Python 代码已不再是默认启动路径。
+| 文件 | 职责 |
+|------|------|
+| `src/main.rs` | CLI 与服务启动 |
+| `src/web.rs` | Axum Web UI 后端，所有 API 路由 |
+| `src/agent.rs` | ReAct Agent 循环、任务队列、停止信号 |
+| `src/acp.rs` | ACP 多智能体协作协议（Orchestrator + Specialist） |
+| `src/oneshot.rs` | One Shot 自主脑暴驱动执行（外层发散 + 内层执行） |
+| `src/llm.rs` | Claude / OpenAI 兼容后端与流式解析 |
+| `src/workflow.rs` | Work/Plan/Review 三模式工作流管道 |
+| `src/skills.rs` | 可插拔技能注册、安装、启用/禁用管理 |
+| `src/error_memory.rs` | 持久化错误记忆与自动回避提示 |
+| `src/tools.rs` | 文件读写、Shell、Git、Web 等工具实现 |
+| `src/workspace.rs` | 本地工作区管理 |
+| `src/remote.rs` | SSH 远程环境连接与管理 |
+| `src/media.rs` | 图片/媒体文件处理 |
+| `src/types.rs` | 共享类型定义 |
+| `src/config.rs` | 配置加载与持久化 |
 
 ### 已支持的能力
 
@@ -198,11 +170,16 @@ Rust 版本已经接管核心运行路径：
 - Git 变更查看、差异预览、回退辅助
 - 远程 SSH 连接与文件/命令操作
 - 图片上传到上下文
-- 主题切换与多主题 UI
+- 主题切换与多主题 UI（10套配色）
 - Work/Plan/Review 三模式工作流管道
+- **ACP 多智能体协作**：自动分解→分发→执行→审查
+- **One Shot 自主模式**：全自动脑暴驱动开发，无用户干预
+- **多智能体适用性检测**：智能判断任务是否适合分解
 - 持久化错误记忆与自动回避提示
-- 可插拔技能系统
+- 可插拔技能系统（6个预装技能）
 - L1-L4 自主记忆架构
+- macOS 原生文件夹选择器
+- 拼音输入法安全处理
 
 ### 模型配置
 
@@ -223,13 +200,7 @@ UI 已内置常见预设，支持直接填写 API Key 使用，包括：
 - Zhipu
 - OpenAI / Anthropic / OpenRouter
 
-也支持手动填写：
-
-- Session type
-- Base URL
-- Provider
-- Model name
-- API Key
+也支持手动填写：Session type、Base URL、Provider、Model name、API Key。
 
 UI 保存的配置默认写入当前用户目录，不会自动写回仓库文件。
 
@@ -282,30 +253,39 @@ http://127.0.0.1:8765
 ### 开发与验证
 
 ```bash
-cargo test
+cargo test    # 53 测试
+cargo build --release
 ```
 
 ### 目录结构
 
 ```text
 src/
-  main.rs          CLI + 服务启动
-  web.rs           Web UI 后端
-  agent.rs         Agent 循环
-  llm.rs           模型接入与流式解析
-  workflow.rs      工作流管道 (Work/Plan/Review)
-  error_memory.rs  错误记忆与回避提示
-  skills.rs        技能注册与管理
-  tools.rs         工具集合
-  workspace.rs     工作区管理
-  remote.rs        SSH 远程环境
-  media.rs         媒体处理
-  types.rs         共享类型定义
-  config.rs        配置加载与保存
+  main.rs           CLI + 服务启动
+  web.rs            Web UI 后端 (Axum)
+  agent.rs          Agent 循环与任务执行
+  acp.rs            ACP 多智能体协作
+  oneshot.rs        One Shot 自主脑暴执行
+  llm.rs            模型接入与流式解析
+  workflow.rs       工作流管道 (Work/Plan/Review)
+  error_memory.rs   错误记忆与回避提示
+  skills.rs         技能注册与管理
+  tools.rs          工具集合
+  workspace.rs      工作区管理
+  remote.rs         SSH 远程环境
+  media.rs          媒体处理
+  types.rs          共享类型定义
+  config.rs         配置加载与保存
 assets/
-  generic_coder/   Web 前端资源
-skills/            可插拔技能（5个预装）
-memory/            自主记忆系统（L1-L4）
+  generic_coder/    Web 前端资源 (HTML/CSS/JS)
+skills/
+  brainstorming/    One Shot 脑暴技能
+  code-review/      代码审查
+  create-skill/     创建新技能
+  file-search/      文件搜索
+  self-audit/       自我审计
+  webfetch/         网页抓取
+memory/             自主记忆系统 (L1-L4)
 ```
 
 ---
@@ -324,6 +304,8 @@ is now a **Rust-first** coding cockpit. It provides a local web interface for:
 - opening a local workspace, browsing the tree, and searching files
 - reviewing Git changes and diffs
 - connecting to a remote SSH environment
+- **Multi-Agent Collaboration (ACP)**: automatic task decomposition into roles (Searcher / Planner / Coder / Reviewer) with sequential execution
+- **One Shot Autonomous Mode**: brainstorming-driven self-directed development — generates options, picks the best, executes, re-brainstorms on roadblocks, stops only when exhausted
 
 Recommended entry points:
 
@@ -337,45 +319,62 @@ Default local URL:
 http://127.0.0.1:8765
 ```
 
-### 2026-05-03 → 05-04 Major Updates
+### Recent Major Updates (2026-05-03 → 05-04)
 
 | Module | Description |
 |--------|-------------|
-| **Error Memory** | 5-tier error classification (critical/tool/system/validation/unknown), auto fingerprinting (`tool:category`), count tracking, avoidance hint injection into system prompts |
-| **Workflow Pipeline** | 3-mode agent pipeline (WORK 70t/PLAN 100t/REVIEW 50t), drag-and-drop builder, mode-specific system prompts with auto-advance |
-| **Skills Manager** | Pluggable `skills/` subsystem, 5 preinstalled skills (code-review/webfetch/file-search/create-skill/self-audit) with install/uninstall and versioning |
-| **macOS Launcher** | One-click startup via `start-generic-coder.sh` — auto build, health-check polling, browser auto-open with UUID picker token auth |
-| **Autonomous Memory Stack** | L1-L4 layered memory: insight index → fact store → task SOPs → raw sessions. Plan mode with subagent delegation and adversarial verification |
+| **ACP Multi-Agent** | Orchestrator auto-decomposes tasks into JSON execution plans; Searcher → Planner → Coder → Reviewer execute sequentially; all events streamed to frontend |
+| **One Shot Autonomous** | Loads brainstorming skill, outer loop generates direction options, inner loop executes, automatic re-brainstorming on roadblocks, seen_options dedup and triple exhaustion detection |
+| **Stop Button Hardening** | `stop_sig` reaches `agent_runner_loop` per-turn checkpoints; frontend immediately resets state and starts fresh chat |
+| **IME Input Fix** | Enter key checks `KeyboardEvent.isComposing` before sending; pinyin candidate confirmation no longer triggers message send |
+| **Multi-Agent Suitability** | Automatic heuristic check on toggle — rejects trivial/arithmetic prompts, accepts structural patterns and code tasks |
+| **Error Memory** | 5-tier error classification (critical/tool/system/validation/unknown), auto fingerprinting (`tool:category`), count tracking, avoidance hints |
+| **Workflow Pipeline** | WORK/PLAN/REVIEW 3-mode pipeline, drag-and-drop builder, up to 3 sequential nodes |
+| **Skills Manager** | Pluggable `skills/` subsystem, 6 preinstalled skills (code-review / webfetch / file-search / create-skill / self-audit / brainstorming) |
+| **macOS Workspace Picker** | Native folder picker via osascript fallback, works without special environment tokens |
+| **Autonomous Memory Stack** | L1-L4 layered memory: insight index → fact store → task SOPs → raw sessions, persistent |
 
 ### Current implementation status
 
-The Rust runtime now owns the supported execution path:
+The Rust runtime now owns the full execution path:
 
-- `src/main.rs` - CLI and server startup
-- `src/web.rs` - web backend
-- `src/agent.rs` - agent loop and task execution
-- `src/llm.rs` - Claude / OpenAI-compatible backends and streaming parsing
-- `src/workflow.rs` - Work/Plan/Review 3-mode workflow pipeline
-- `src/error_memory.rs` - persistent error memory with avoidance hints
-- `src/skills.rs` - pluggable skills registry and manager
-- `src/tools.rs`, `src/workspace.rs`, `src/remote.rs` - tools, workspace, and remote environment support
-
-The legacy Python entrypoints are no longer the primary startup path.
+| File | Purpose |
+|------|---------|
+| `src/main.rs` | CLI and server startup |
+| `src/web.rs` | Axum web backend, all API routes |
+| `src/agent.rs` | ReAct agent loop, task queue, stop signals |
+| `src/acp.rs` | ACP multi-agent collaboration protocol |
+| `src/oneshot.rs` | One Shot autonomous brainstorming-driven execution |
+| `src/llm.rs` | Claude / OpenAI-compatible backends and streaming |
+| `src/workflow.rs` | Work/Plan/Review 3-mode workflow pipeline |
+| `src/skills.rs` | Pluggable skills registry and management |
+| `src/error_memory.rs` | Persistent error memory with avoidance hints |
+| `src/tools.rs` | File, shell, Git, web tool implementations |
+| `src/workspace.rs` | Local workspace manager |
+| `src/remote.rs` | SSH remote environment support |
+| `src/media.rs` | Image/media file handling |
+| `src/types.rs` | Shared type definitions |
+| `src/config.rs` | Config loading and persistence |
 
 ### Included capabilities
 
 - Rust + Axum web server
-- chat workspace with task polling
-- multi-model configuration and local persistence
-- local workspace selection with both folder picker and direct path input
+- Chat workspace with task polling
+- Multi-model configuration and local persistence
+- Local workspace selection with both folder picker and direct path input
 - Git change review, diff preview, and revert helpers
-- remote SSH connection and file/command operations
-- image upload into the chat context
-- theme switching and multiple UI themes
+- Remote SSH connection and file/command operations
+- Image upload into the chat context
+- Theme switching with 10 UI themes
 - Work/Plan/Review 3-mode workflow pipeline
-- persistent error memory with automatic avoidance hints
-- pluggable skill system
+- **ACP multi-agent collaboration** with auto-decomposition
+- **One Shot autonomous mode** with brainstorming-driven execution
+- **Multi-agent suitability detection** with smart heuristics
+- Persistent error memory with automatic avoidance hints
+- Pluggable skill system (6 preinstalled skills)
 - L1-L4 autonomous memory architecture
+- macOS native folder picker
+- IME-safe input handling
 
 ### Model configuration
 
@@ -396,13 +395,7 @@ The UI includes ready-to-use presets for common providers:
 - Zhipu
 - OpenAI / Anthropic / OpenRouter
 
-Manual configuration is also supported for:
-
-- session type
-- base URL
-- provider
-- model name
-- API key
+Manual configuration is also supported for session type, base URL, provider, model name, and API key.
 
 Saved UI configurations are written to the local user profile rather than committed to the repository.
 
@@ -426,9 +419,7 @@ cd Generic-Coder-Rust
 
 #### 3. Start the app
 
-**Windows**
-
-Double-click:
+**Windows** — Double-click:
 
 ```text
 start-generic-coder.bat
@@ -455,30 +446,39 @@ http://127.0.0.1:8765
 ### Development
 
 ```bash
-cargo test
+cargo test    # 53 tests
+cargo build --release
 ```
 
 ### Project structure
 
 ```text
 src/
-  main.rs          CLI + server startup
-  web.rs           Web UI backend
-  agent.rs         Agent loop
-  llm.rs           Model integration and streaming parser
-  workflow.rs      Workflow pipeline (Work/Plan/Review)
-  error_memory.rs  Error memory and avoidance hints
-  skills.rs        Skills registry and manager
-  tools.rs         Tool implementations
-  workspace.rs     Workspace manager
-  remote.rs        SSH remote support
-  media.rs         Media handling
-  types.rs         Shared type definitions
-  config.rs        Config loading and persistence
+  main.rs           CLI + server startup
+  web.rs            Web UI backend (Axum)
+  agent.rs          Agent loop and task execution
+  acp.rs            ACP multi-agent collaboration
+  oneshot.rs        One Shot autonomous brainstorming execution
+  llm.rs            Model integration and streaming parser
+  workflow.rs       Workflow pipeline (Work/Plan/Review)
+  error_memory.rs   Error memory and avoidance hints
+  skills.rs         Skills registry and manager
+  tools.rs          Tool implementations
+  workspace.rs      Workspace manager
+  remote.rs         SSH remote support
+  media.rs          Media handling
+  types.rs          Shared type definitions
+  config.rs         Config loading and persistence
 assets/
-  generic_coder/   Web frontend assets
-skills/            Pluggable skills (5 preinstalled)
-memory/            Autonomous memory system (L1-L4)
+  generic_coder/    Web frontend assets (HTML/CSS/JS)
+skills/
+  brainstorming/    One Shot brainstorming skill
+  code-review/      Code review
+  create-skill/     Create new skills
+  file-search/      File search
+  self-audit/       Self audit
+  webfetch/         Web fetch
+memory/             Autonomous memory system (L1-L4)
 ```
 
 ---
@@ -497,6 +497,8 @@ ahora funciona con una implementación **principalmente en Rust**. Ofrece una in
 - abrir un espacio de trabajo local, ver el árbol y buscar archivos
 - revisar cambios y diffs de Git
 - conectarse a un entorno remoto por SSH
+- **Colaboración Multi-Agente (ACP)**: descomposición automática de tareas en roles (Searcher / Planner / Coder / Reviewer) con ejecución secuencial
+- **Modo Autónomo One Shot**: desarrollo autodirigido con lluvia de ideas — genera opciones, elige la mejor, ejecuta, repite ante obstáculos, se detiene solo cuando se agotan las ideas
 
 Entradas recomendadas:
 
@@ -510,30 +512,41 @@ URL local por defecto:
 http://127.0.0.1:8765
 ```
 
-### 2026-05-03 → 05-04 Grandes actualizaciones
+### Actualizaciones recientes (2026-05-03 → 05-04)
 
 | Módulo | Descripción |
 |--------|-------------|
-| **Memoria de errores** | Clasificación en 5 niveles (critical/tool/system/validation/unknown), huella automática (`tool:category`), conteo e inyección de sugerencias de evasión |
-| **Pipeline de flujo de trabajo** | Pipeline de 3 modos (WORK 70t/PLAN 100t/REVIEW 50t), constructor visual, prompts específicos por modo |
-| **Gestor de habilidades** | Subsistema `skills/` conectable, 5 habilidades preinstaladas (code-review/webfetch/file-search/create-skill/self-audit) |
-| **Lanzador macOS** | Arranque con un clic: construcción automática, sondeo de salud y apertura automática del navegador con token UUID |
-| **Pila de memoria autónoma** | Memoria en 4 capas L1-L4: índice → hechos → SOPs → sesiones. Modo Plan con delegación a subagente y verificación adversarial |
+| **ACP Multi-Agente** | Orchestrator descompone tareas en planes JSON; Searcher → Planner → Coder → Reviewer ejecutan secuencialmente; todos los eventos transmitidos al frontend |
+| **One Shot Autónomo** | Carga habilidad de lluvia de ideas, bucle externo genera direcciones, bucle interno ejecuta, re-lluvia automática ante obstáculos, deduplicación y triple detección de agotamiento |
+| **Botón de parada reforzado** | Señal de parada llega a cada iteración de `agent_runner_loop`; frontend reinicia estado inmediatamente y abre nuevo chat |
+| **Corrección de IME** | Tecla Enter verifica `KeyboardEvent.isComposing` antes de enviar; confirmación de candidatos pinyin ya no dispara envío |
+| **Memoria de errores** | Clasificación en 5 niveles, huella automática, conteo e inyección de sugerencias de evasión |
+| **Pipeline de flujo de trabajo** | Pipeline de 3 modos (WORK/PLAN/REVIEW), constructor visual, hasta 3 nodos secuenciales |
+| **Gestor de habilidades** | Subsistema `skills/` conectable, 6 habilidades preinstaladas |
+| **Selector de workspace macOS** | Selector de carpetas nativo vía osascript |
+| **Pila de memoria autónoma** | Memoria en 4 capas L1-L4, persistente |
 
 ### Estado actual de la implementación
 
-La ruta de ejecución soportada ya está controlada por Rust:
+La ruta de ejecución completa está controlada por Rust:
 
-- `src/main.rs` - CLI e inicio del servidor
-- `src/web.rs` - backend de la interfaz web
-- `src/agent.rs` - bucle del agente y ejecución de tareas
-- `src/llm.rs` - backends compatibles con Claude / OpenAI y parsing de streaming
-- `src/workflow.rs` - pipeline de flujo Work/Plan/Review de 3 modos
-- `src/error_memory.rs` - memoria persistente de errores con sugerencias de evasión
-- `src/skills.rs` - registro y gestión de habilidades conectables
-- `src/tools.rs`, `src/workspace.rs`, `src/remote.rs` - herramientas, espacio de trabajo y entorno remoto
-
-Las rutas antiguas en Python ya no son la vía principal de inicio.
+| Archivo | Propósito |
+|---------|-----------|
+| `src/main.rs` | CLI e inicio del servidor |
+| `src/web.rs` | Backend web (Axum), todas las rutas API |
+| `src/agent.rs` | Bucle del agente ReAct, cola de tareas, señales de parada |
+| `src/acp.rs` | Protocolo de colaboración multi-agente ACP |
+| `src/oneshot.rs` | Ejecución autónoma con lluvia de ideas |
+| `src/llm.rs` | Backends Claude / OpenAI y streaming |
+| `src/workflow.rs` | Pipeline de flujo Work/Plan/Review |
+| `src/skills.rs` | Registro y gestión de habilidades |
+| `src/error_memory.rs` | Memoria de errores con sugerencias |
+| `src/tools.rs` | Implementación de herramientas |
+| `src/workspace.rs` | Gestión del espacio de trabajo |
+| `src/remote.rs` | Soporte SSH remoto |
+| `src/media.rs` | Manejo de medios |
+| `src/types.rs` | Definiciones de tipos compartidos |
+| `src/config.rs` | Carga y persistencia de configuración |
 
 ### Capacidades incluidas
 
@@ -544,11 +557,16 @@ Las rutas antiguas en Python ya no son la vía principal de inicio.
 - revisión de cambios Git, vista previa de diff y ayuda para revertir
 - conexión SSH remota y operaciones de archivos/comandos
 - subida de imágenes al contexto del chat
-- cambio de tema y varios temas de interfaz
+- cambio de tema y 10 temas de interfaz
 - pipeline de flujo Work/Plan/Review de 3 modos
+- **colaboración multi-agente ACP** con descomposición automática
+- **modo autónomo One Shot** con ejecución dirigida por lluvia de ideas
+- **detección de idoneidad multi-agente** con heurísticas inteligentes
 - memoria persistente de errores con sugerencias automáticas
-- sistema de habilidades conectables
+- sistema de habilidades conectables (6 preinstaladas)
 - arquitectura de memoria autónoma L1-L4
+- selector de carpetas nativo macOS
+- entrada segura para IME
 
 ### Configuración de modelos
 
@@ -557,25 +575,9 @@ Puedes configurar modelos de dos formas:
 1. **Recomendado:** desde **Settings** en la interfaz web
 2. Creando `mykey.json` en la raíz del proyecto a partir de `mykey.json.example`
 
-La UI ya incluye preajustes para proveedores comunes:
+La UI ya incluye preajustes para proveedores comunes: DeepSeek, Qwen / DashScope, Kimi / Moonshot, MiniMax, Doubao / Ark, Tencent Hunyuan, Baidu Qianfan, Zhipu, OpenAI / Anthropic / OpenRouter.
 
-- DeepSeek
-- Qwen / DashScope
-- Kimi / Moonshot
-- MiniMax
-- Doubao / Ark
-- Tencent Hunyuan
-- Baidu Qianfan
-- Zhipu
-- OpenAI / Anthropic / OpenRouter
-
-También se puede configurar manualmente:
-
-- tipo de sesión
-- base URL
-- proveedor
-- nombre del modelo
-- API key
+También se puede configurar manualmente: tipo de sesión, base URL, proveedor, nombre del modelo y API key.
 
 Las configuraciones guardadas desde la UI se escriben en el perfil local del usuario, no en el repositorio.
 
@@ -599,13 +601,7 @@ cd Generic-Coder-Rust
 
 #### 3. Inicia la aplicación
 
-**Windows**
-
-Haz doble clic en:
-
-```text
-start-generic-coder.bat
-```
+**Windows** — Haz doble clic en `start-generic-coder.bat`
 
 **macOS / Linux**
 
@@ -628,28 +624,37 @@ http://127.0.0.1:8765
 ### Desarrollo
 
 ```bash
-cargo test
+cargo test    # 53 tests
+cargo build --release
 ```
 
 ### Estructura del proyecto
 
 ```text
 src/
-  main.rs          CLI + inicio del servidor
-  web.rs           Backend de la interfaz web
-  agent.rs         Bucle del agente
-  llm.rs           Integración de modelos y parser de streaming
-  workflow.rs      Pipeline de flujo (Work/Plan/Review)
-  error_memory.rs  Memoria de errores y sugerencias de evasión
-  skills.rs        Registro y gestión de habilidades
-  tools.rs         Implementación de herramientas
-  workspace.rs     Gestión del espacio de trabajo
-  remote.rs        Soporte SSH remoto
-  media.rs         Manejo de medios
-  types.rs         Definiciones de tipos compartidos
-  config.rs        Carga y persistencia de configuración
+  main.rs           CLI + inicio del servidor
+  web.rs            Backend de la interfaz web (Axum)
+  agent.rs          Bucle del agente y ejecución de tareas
+  acp.rs            Colaboración multi-agente ACP
+  oneshot.rs        Ejecución autónoma con lluvia de ideas
+  llm.rs            Integración de modelos y parser de streaming
+  workflow.rs       Pipeline de flujo (Work/Plan/Review)
+  error_memory.rs   Memoria de errores y sugerencias
+  skills.rs         Registro y gestión de habilidades
+  tools.rs          Implementación de herramientas
+  workspace.rs      Gestión del espacio de trabajo
+  remote.rs         Soporte SSH remoto
+  media.rs          Manejo de medios
+  types.rs          Definiciones de tipos compartidos
+  config.rs         Carga y persistencia de configuración
 assets/
-  generic_coder/   Recursos del frontend web
-skills/            Habilidades conectables (5 preinstaladas)
-memory/            Sistema de memoria autónoma (L1-L4)
+  generic_coder/    Recursos del frontend web (HTML/CSS/JS)
+skills/
+  brainstorming/    Habilidad de lluvia de ideas
+  code-review/      Revisión de código
+  create-skill/     Crear nuevas habilidades
+  file-search/      Búsqueda de archivos
+  self-audit/       Auto auditoría
+  webfetch/         Descarga web
+memory/             Sistema de memoria autónoma (L1-L4)
 ```
