@@ -715,12 +715,60 @@ async fn pick_workspace_folder(
         ));
     }
 
-    let picked = tokio::task::spawn_blocking(move || {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let picked = tokio::task::spawn_blocking(move || -> Option<std::path::PathBuf> {
+        // Strategy 1: rfd (native Rust file dialog)
+        let rfd_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             rfd::FileDialog::new()
                 .set_title("Select workspace folder")
                 .pick_folder()
-        }))
+        }));
+        if let Ok(Some(path)) = rfd_result {
+            return Some(path);
+        }
+
+        // Strategy 2: osascript on macOS (works from any terminal process)
+        #[cfg(target_os = "macos")]
+        {
+            let output = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(r#"tell application "Finder" to set f to choose folder with prompt "Select workspace folder""#)
+                .arg("-e")
+                .arg("POSIX path of f")
+                .output()
+                .ok();
+            if let Some(out) = output {
+                if out.status.success() {
+                    let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !path_str.is_empty() {
+                        return Some(std::path::PathBuf::from(path_str));
+                    }
+                }
+                // User cancelled (non-zero exit) → return None
+                if !out.status.success() {
+                    return None;
+                }
+            }
+        }
+
+        // Strategy 3: zenity on Linux
+        #[cfg(not(target_os = "macos"))]
+        {
+            let output = std::process::Command::new("zenity")
+                .args(["--file-selection", "--directory", "--title=Select workspace folder"])
+                .output()
+                .ok();
+            if let Some(out) = output {
+                if out.status.success() {
+                    let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !path_str.is_empty() {
+                        return Some(std::path::PathBuf::from(path_str));
+                    }
+                }
+                return None;
+            }
+        }
+
+        None
     })
     .await
     .map_err(|err| {
@@ -728,13 +776,7 @@ async fn pick_workspace_folder(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Folder picker failed: {err}"),
         )
-    })
-    .and_then(|result| result.map_err(|_| {
-        json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Folder picker is not available in this environment (non-windowed session). Use manual path input instead.",
-        )
-    }))?;
+    })?;
 
     let Some(path) = picked else {
         return Ok(Json(json!({"path": null, "cancelled": true})));
