@@ -79,6 +79,7 @@ pub struct AppState {
     current_mode: RwLock<AgentMode>,
     multi_agent_enabled: RwLock<bool>,
     one_shot_enabled: RwLock<bool>,
+    computer_use_enabled: RwLock<bool>,
 }
 
 #[derive(Deserialize)]
@@ -564,6 +565,8 @@ async fn bootstrap(State(state): State<Arc<AppState>>) -> Json<Value> {
         "picker_token": state.workspace_picker_token.as_deref().unwrap_or(""),
         "multi_agent_enabled": *state.multi_agent_enabled.read(),
         "one_shot_enabled": *state.one_shot_enabled.read(),
+        "computer_use_enabled": *state.computer_use_enabled.read(),
+        "computer_use_available": cfg!(target_os = "macos") || cfg!(target_os = "linux"),
     }))
 }
 
@@ -1582,6 +1585,20 @@ async fn set_one_shot(
     Json(json!({"enabled": enabled}))
 }
 
+async fn get_computer_use(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let enabled = *state.computer_use_enabled.read();
+    Json(json!({"enabled": enabled, "available": cfg!(target_os = "macos") || cfg!(target_os = "linux")}))
+}
+
+async fn set_computer_use(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<Value>,
+) -> Json<Value> {
+    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    *state.computer_use_enabled.write() = enabled;
+    Json(json!({"enabled": enabled}))
+}
+
 pub fn create_app(state: Arc<AppState>) -> Router {
     let assets_dir = state.project_dir.join("assets").join("generic_coder");
     Router::new()
@@ -1647,6 +1664,8 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/multi-agent/suitable", post(check_multi_agent_suitable))
         .route("/api/one-shot", get(get_one_shot))
         .route("/api/one-shot", post(set_one_shot))
+        .route("/api/computer-use", get(get_computer_use))
+        .route("/api/computer-use", post(set_computer_use))
         .with_state(state)
 }
 
@@ -1696,6 +1715,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         current_mode: RwLock::new(AgentMode::Work),
         multi_agent_enabled: RwLock::new(false),
         one_shot_enabled: RwLock::new(false),
+        computer_use_enabled: RwLock::new(true), // enabled by default on supported platforms
     });
 
     // Bootstrap preset skills (auto-register any new skill dirs in skills/)

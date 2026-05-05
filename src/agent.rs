@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex, RwLock as TokioRwLock};
 use tokio::task::JoinHandle;
 
@@ -862,6 +862,8 @@ impl AgentHandler {
             "remote_list_dir" => self.do_remote_list_dir(&args),
             "media_info" => self.do_media_info(&args),
             "media_extract" => self.do_media_extract(&args),
+            "computer_screenshot" => self.do_computer_screenshot(&args),
+            "computer_action" => self.do_computer_action(&args),
             _ => {
                 self.record_error(
                     tool_name,
@@ -1509,6 +1511,61 @@ impl AgentHandler {
             data,
             next_prompt: Some(String::new()),
             should_exit: false,
+        }
+    }
+
+    // ── Computer Use ─────────────────────────────────────────────────────
+
+    fn do_computer_screenshot(&self, args: &Value) -> StepOutcome {
+        let region = args.get("region").and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect::<Vec<_>>());
+        let display = args.get("display").and_then(|v| v.as_u64());
+
+        match crate::tools::computer_screenshot(
+            region.as_deref(),
+            display,
+        ) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error("computer_screenshot", &msg, ErrorSeverity::Tool, json!({}));
+                StepOutcome {
+                    data: json!({"status": "error", "error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_computer_action(&self, args: &Value) -> StepOutcome {
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
+        let x = args.get("x").and_then(|v| v.as_u64());
+        let y = args.get("y").and_then(|v| v.as_u64());
+        let text = args.get("text").and_then(|v| v.as_str());
+        let direction = args.get("direction").and_then(|v| v.as_str());
+        let amount = args.get("amount").and_then(|v| v.as_u64());
+        let duration = args.get("duration").and_then(|v| v.as_f64());
+
+        match crate::tools::computer_action(action, x, y, text, direction, amount, duration) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error("computer_action", &msg, ErrorSeverity::Tool, json!({"action": action}));
+                StepOutcome {
+                    data: json!({"status": "error", "error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
         }
     }
 

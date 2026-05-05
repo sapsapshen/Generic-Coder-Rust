@@ -1,6 +1,9 @@
 temp/
 tmp/
 
+# Ad-hoc session screenshots
+/[0-9a-f]*-*.png
+
 __pycache__/
 *.py[cod]
 *$py.class

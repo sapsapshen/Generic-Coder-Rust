@@ -1,0 +1,81 @@
+{
+  "name": "generic-coder-ui",
+  "version": "1.0.0",
+  "description": "Generic Coder — Autonomous AI Coding Cockpit",
+  "main": "main.js",
+  "author": "Generic Coder",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:macos": "electron-builder --mac --x64 --arm64",
+    "build:macos:x64": "electron-builder --mac --x64",
+    "build:macos:arm64": "electron-builder --mac --arm64",
+    "build:windows": "electron-builder --win --x64",
+    "build:all": "electron-builder --mac --win --x64"
+  },
+  "build": {
+    "appId": "com.generic-coder.ui",
+    "productName": "Generic Coder",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "!assets/*.md"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": ["generic-coder-backend*"]
+      }
+    ],
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Generic Coder"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

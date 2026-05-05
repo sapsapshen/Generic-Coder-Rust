@@ -1,0 +1,24 @@
+[package]
+name = "generic-coder-tui"
+version = "0.1.0"
+edition = "2021"
+description = "Generic Coder TUI — terminal-based coding cockpit"
+license = "MIT"
+
+[[bin]]
+name = "generic-coder-tui"
+path = "src/main.rs"
+
+[dependencies]
+generic-coder = { path = ".." }
+ratatui = "0.28"
+crossterm = "0.28"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+chrono = "0.4"
+dirs = "6"
+regex = "1"
