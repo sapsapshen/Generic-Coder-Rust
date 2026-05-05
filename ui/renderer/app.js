@@ -22,6 +22,8 @@
     'openrouter_claude',
   ];
 
+  const MAX_INPUT_HISTORY = 50;
+
   const PROTOCOL_PRESETS = {
     custom: { sessionType: 'native_oai', api_mode: 'chat_completions', provider: '', apibase: '' },
     deepseek: { sessionType: 'native_oai', api_mode: 'chat_completions', provider: 'DeepSeek', apibase: 'https://api.deepseek.com/v1' },
@@ -136,9 +138,16 @@
     computerUseEnabled: true,
     sidebarVisible: true,
     workspaceFiles: [],
+    workspacePreviewPath: null,
     gitChanges: [],
     skills: [],
     pendingTaskId: null,
+    attachFileName: null,
+    attachFileContent: null,
+    inputHistory: [],
+    inputHistoryIndex: -1,
+    pendingDraft: null,
+    previewMessageSeq: 0,
     cmdPaletteIdx: -1,
     // LLM form state (for settings)
     llmForm: {
@@ -163,6 +172,11 @@
     chatInput: $('#chat-input'),
     btnSend: $('#btn-send'),
     btnStop: $('#btn-stop'),
+    btnAttach: $('#btn-attach'),
+    attachFileInput: $('#attach-file-input'),
+    attachPreview: $('#attach-preview'),
+    attachPreviewName: $('#attach-preview-name'),
+    attachPreviewRemove: $('#attach-preview-remove'),
     sessionList: $('#session-list'),
     btnNewSession: $('#btn-new-session'),
     tbSession: $('#tb-session'),
@@ -200,6 +214,7 @@
     // Settings — Workspace
     cfgProjectDir: $('#cfg-project-dir'),
     btnPickFolder: $('#btn-pick-folder'),
+    btnApplyWorkspace: $('#btn-apply-workspace'),
     // Settings — Skills
     skillsList: $('#skills-list'),
     skillsStatus: $('#skills-status'),
@@ -330,6 +345,9 @@
     dom.btnStop.addEventListener('click', handleStop);
     dom.chatInput.addEventListener('keydown', handleInputKey);
     dom.chatInput.addEventListener('input', autoResizeInput);
+    dom.btnAttach.addEventListener('click', () => dom.attachFileInput.click());
+    dom.attachFileInput.addEventListener('change', handleAttachFile);
+    dom.attachPreviewRemove.addEventListener('click', clearAttachment);
 
     // Session
     dom.btnNewSession.addEventListener('click', createNewSession);
@@ -378,6 +396,7 @@
 
     // Settings — Workspace
     if (dom.btnPickFolder) dom.btnPickFolder.addEventListener('click', pickFolder);
+    if (dom.btnApplyWorkspace) dom.btnApplyWorkspace.addEventListener('click', applyWorkspace);
 
     // Settings — Skills
     if (dom.installSkillButton) dom.installSkillButton.addEventListener('click', installSkill);
@@ -395,6 +414,8 @@
     // Sidebar
     dom.btnToggleSidebar.addEventListener('click', toggleSidebar);
     dom.btnRefreshWorkspace.addEventListener('click', refreshWorkspace);
+    dom.workspaceTree.addEventListener('click', handleWorkspaceTreeClick);
+    dom.messages.addEventListener('click', handleMessageActionsClick);
 
     // Command Palette
     dom.btnCommandPalette.addEventListener('click', openCommandPalette);
@@ -543,7 +564,107 @@
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       handleSend();
+      return;
     }
+
+    if (e.key === 'ArrowUp' && shouldRecallHistory()) {
+      e.preventDefault();
+      navigateInputHistory(-1);
+      return;
+    }
+
+    if (e.key === 'ArrowDown' && state.inputHistoryIndex !== -1) {
+      e.preventDefault();
+      navigateInputHistory(1);
+    }
+  }
+
+  function shouldRecallHistory() {
+    if (!dom.chatInput || !state.inputHistory.length) return false;
+    if (dom.chatInput.selectionStart !== dom.chatInput.selectionEnd) return false;
+    const caret = dom.chatInput.selectionStart || 0;
+    const beforeCaret = dom.chatInput.value.slice(0, caret);
+    return !beforeCaret.includes('\n');
+  }
+
+  function snapshotCurrentDraft() {
+    return {
+      text: dom.chatInput.value,
+      attachmentName: state.attachFileName,
+      attachmentContent: state.attachFileContent,
+    };
+  }
+
+  function pushInputHistory(entry) {
+    if (!entry || !entry.text || !entry.text.trim()) return;
+
+    const previous = state.inputHistory[state.inputHistory.length - 1];
+    if (
+      previous
+      && previous.text === entry.text
+      && previous.attachmentName === entry.attachmentName
+      && previous.attachmentContent === entry.attachmentContent
+    ) {
+      state.inputHistoryIndex = -1;
+      state.pendingDraft = null;
+      return;
+    }
+
+    state.inputHistory.push({
+      text: entry.text,
+      attachmentName: entry.attachmentName || null,
+      attachmentContent: entry.attachmentContent || null,
+    });
+
+    if (state.inputHistory.length > MAX_INPUT_HISTORY) {
+      state.inputHistory.shift();
+    }
+
+    state.inputHistoryIndex = -1;
+    state.pendingDraft = null;
+  }
+
+  function navigateInputHistory(direction) {
+    if (!state.inputHistory.length) return;
+
+    if (direction < 0) {
+      if (state.inputHistoryIndex === -1) {
+        state.pendingDraft = snapshotCurrentDraft();
+        state.inputHistoryIndex = state.inputHistory.length - 1;
+      } else {
+        state.inputHistoryIndex = Math.max(0, state.inputHistoryIndex - 1);
+      }
+      applyDraftEntry(state.inputHistory[state.inputHistoryIndex]);
+      return;
+    }
+
+    if (state.inputHistoryIndex === -1) return;
+
+    const nextIndex = state.inputHistoryIndex + 1;
+    if (nextIndex >= state.inputHistory.length) {
+      state.inputHistoryIndex = -1;
+      applyDraftEntry(state.pendingDraft);
+      state.pendingDraft = null;
+      return;
+    }
+
+    state.inputHistoryIndex = nextIndex;
+    applyDraftEntry(state.inputHistory[state.inputHistoryIndex]);
+  }
+
+  function applyDraftEntry(entry) {
+    dom.chatInput.value = entry?.text || '';
+    autoResizeInput();
+
+    if (entry?.attachmentName && entry?.attachmentContent) {
+      setAttachmentPreview(entry.attachmentName, entry.attachmentContent);
+    } else {
+      clearAttachment();
+    }
+
+    dom.chatInput.focus();
+    const end = dom.chatInput.value.length;
+    dom.chatInput.setSelectionRange(end, end);
   }
 
   function handleGlobalKey(e) {
@@ -797,7 +918,8 @@
 
   // ── Messaging ────────────────────────────────────────────────
   async function handleSend() {
-    const text = dom.chatInput.value.trim();
+    const draftEntry = snapshotCurrentDraft();
+    const text = draftEntry.text.trim();
     if (!text || state.isStreaming) return;
 
     if (text.startsWith('/')) {
@@ -811,10 +933,29 @@
 
     dom.btnSend.disabled = true;
     dom.btnStop.disabled = false;
+    pushInputHistory(draftEntry);
     dom.chatInput.value = '';
     dom.chatInput.style.height = 'auto';
 
-    addUserMessage(text);
+    // Build prompt with optional file context
+    let promptText = text;
+    const uploadedFile = state.attachFileName;
+    const uploadedContent = state.attachFileContent;
+    clearAttachment();
+
+    if (uploadedFile && uploadedContent) {
+      // Truncate file content to avoid blowing up context
+      const maxFileLen = 30000;
+      const truncated = uploadedContent.length > maxFileLen
+        ? uploadedContent.slice(0, maxFileLen) + '\n... (file truncated)'
+        : uploadedContent;
+      promptText = '# Attached file: ' + uploadedFile + '\n\n```\n' + truncated + '\n```\n\n---\n' + text;
+      // Show truncated preview in user message
+      const previewLen = Math.min(uploadedContent.length, 1200);
+      addUserMessage(text + '\n\n[Attached: ' + uploadedFile + ' (' + (uploadedContent.length > 1024 ? (uploadedContent.length / 1024).toFixed(1) + ' KB)' : uploadedContent.length + ' bytes)') + ']');
+    } else {
+      addUserMessage(text);
+    }
     dom.welcome.style.display = 'none';
 
     if (!state.backendConnected) {
@@ -852,7 +993,7 @@
       const res = await fetch(state.serverUrl + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: promptText }),
       });
       let data = {};
       try {
@@ -963,6 +1104,23 @@
     scrollToBottom();
   }
 
+  function addWorkspacePreviewMessage(preview) {
+    const msg = {
+      id: 'preview-' + (++state.previewMessageSeq),
+      role: 'system',
+      preview,
+      timestamp: new Date().toISOString(),
+    };
+    state.messages.push(msg);
+    const session = state.sessions.find((s) => s.id === state.activeSessionId);
+    if (session) session.messages = state.messages;
+    dom.welcome.style.display = 'none';
+    renderMessage(msg);
+    saveSettings();
+    renderSessions();
+    scrollToBottom();
+  }
+
   function createStreamingMessage() {
     const msgObj = { role: 'assistant', content: '', timestamp: new Date().toISOString() };
     state.messages.push(msgObj);
@@ -972,6 +1130,7 @@
   function renderMessage(msg, isStreaming) {
     const el = document.createElement('div');
     el.className = 'message';
+    if (msg.id) el.dataset.messageId = msg.id;
 
     let header = '';
     if (msg.role === 'user') {
@@ -986,7 +1145,12 @@
 
     const bodyEl = document.createElement('div');
     bodyEl.className = 'message-body';
-    bodyEl.innerHTML = isStreaming ? '' : formatContent(msg.content);
+    if (msg.preview) {
+      bodyEl.classList.add('message-body--preview');
+      renderWorkspacePreview(bodyEl, msg);
+    } else {
+      bodyEl.innerHTML = isStreaming ? '' : formatContent(msg.content);
+    }
 
     el.innerHTML = header;
     el.appendChild(bodyEl);
@@ -994,6 +1158,64 @@
     dom.messages.appendChild(el);
     scrollToBottom();
     return el;
+  }
+
+  function renderWorkspacePreview(bodyEl, msg) {
+    const preview = msg.preview || {};
+    const card = document.createElement('div');
+    card.className = 'workspace-preview';
+
+    const header = document.createElement('div');
+    header.className = 'workspace-preview__header';
+
+    const headerMain = document.createElement('div');
+    headerMain.className = 'workspace-preview__header-main';
+
+    const title = document.createElement('div');
+    title.className = 'workspace-preview__title';
+    title.textContent = preview.rel || preview.name || 'Workspace preview';
+
+    const meta = document.createElement('div');
+    meta.className = 'workspace-preview__meta';
+    const metaBits = [];
+    if (preview.kind) metaBits.push(String(preview.kind).toUpperCase());
+    if (typeof preview.size === 'number') metaBits.push(formatBytes(preview.size));
+    if (preview.truncated) metaBits.push('TRUNCATED');
+    meta.textContent = metaBits.join(' · ');
+
+    headerMain.appendChild(title);
+    headerMain.appendChild(meta);
+    header.appendChild(headerMain);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'workspace-preview__close';
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close preview');
+    closeBtn.dataset.previewClose = msg.id || '';
+    closeBtn.textContent = '×';
+    header.appendChild(closeBtn);
+
+    card.appendChild(header);
+
+    if (preview.kind === 'image' && preview.data_url) {
+      const image = document.createElement('img');
+      image.className = 'workspace-preview__image';
+      image.src = preview.data_url;
+      image.alt = preview.name || preview.rel || 'Workspace image preview';
+      card.appendChild(image);
+    } else if (preview.kind === 'text') {
+      const text = document.createElement('pre');
+      text.className = 'workspace-preview__text';
+      text.textContent = preview.content || '';
+      card.appendChild(text);
+    } else {
+      const notice = document.createElement('div');
+      notice.className = 'workspace-preview__notice';
+      notice.textContent = preview.message || 'This file type cannot be previewed in the session pane.';
+      card.appendChild(notice);
+    }
+
+    bodyEl.appendChild(card);
   }
 
   function renderAllMessages() {
@@ -1079,8 +1301,7 @@
   }
 
   function handleUsage(data) {
-    state.statusTokens.textContent = 'Tokens: ' + (data.total_tokens || data.usage || '\u2014');
-    dom.statusTokens.textContent = data.total_tokens || data.usage || '\u2014';
+    dom.statusTokens.textContent = formatTokenUsage(data);
   }
 
   function handleSessionCreated(data) {
@@ -1388,6 +1609,53 @@
     } catch (e) { /* ignore */ }
   }
 
+  async function handleWorkspaceTreeClick(event) {
+    const entry = event.target.closest('.ws-entry');
+    if (!entry || !dom.workspaceTree.contains(entry)) return;
+    if (entry.dataset.type !== 'file') return;
+
+    const filePath = entry.dataset.path;
+    if (!filePath) return;
+
+    state.workspacePreviewPath = filePath;
+    renderWorkspaceTree();
+    await previewWorkspaceFile(filePath);
+  }
+
+  function handleMessageActionsClick(event) {
+    const closeBtn = event.target.closest('[data-preview-close]');
+    if (!closeBtn || !dom.messages.contains(closeBtn)) return;
+
+    const messageId = closeBtn.dataset.previewClose;
+    if (!messageId) return;
+    removeMessageById(messageId);
+  }
+
+  function removeMessageById(messageId) {
+    const nextMessages = state.messages.filter((msg) => msg.id !== messageId);
+    if (nextMessages.length === state.messages.length) return;
+
+    state.messages = nextMessages;
+    const session = state.sessions.find((s) => s.id === state.activeSessionId);
+    if (session) session.messages = state.messages;
+    saveSettings();
+    renderSessions();
+    renderAllMessages();
+  }
+
+  async function previewWorkspaceFile(filePath) {
+    try {
+      const response = await fetch(state.serverUrl + '/api/workspace/preview?path=' + encodeURIComponent(filePath));
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to preview file');
+      }
+      addWorkspacePreviewMessage(payload);
+    } catch (error) {
+      toast(error.message || 'Failed to preview workspace file', 'error');
+    }
+  }
+
   function renderWorkspaceTree() {
     if (state.workspaceFiles.length === 0) {
       dom.workspaceTree.innerHTML = '<div class="empty-state">No workspace loaded</div>';
@@ -1401,7 +1669,8 @@
       else if (f.name && f.name.endsWith('.md')) iconClass += ' md';
       const icon = isDir ? '\u25B8' : '\u2014';
       const indent = (f.depth || 0) * 12;
-      return '<div class="ws-entry" style="padding-left:' + (14 + indent) + 'px" data-path="' + escAttr(f.path || '') + '">'
+      const isActive = !isDir && state.workspacePreviewPath === (f.path || '');
+      return '<div class="ws-entry' + (isActive ? ' is-active' : '') + '" style="padding-left:' + (14 + indent) + 'px" data-path="' + escAttr(f.path || '') + '" data-type="' + escAttr(f.type || '') + '">'
         + '<span class="ws-entry__icon ' + iconClass + '">' + icon + '</span>'
         + '<span class="ws-entry__name">' + escHtml(f.name || '') + '</span>'
         + '</div>';
@@ -1634,6 +1903,61 @@
     }
   }
 
+  async function applyWorkspace() {
+    const path = dom.cfgProjectDir?.value?.trim();
+    if (!path) {
+      toast('Please select or enter a project directory', 'error');
+      return;
+    }
+    // Derive workspace name from folder name
+    const name = path.split(/[\\/]/).filter(Boolean).pop() || 'workspace';
+    try {
+      const resp = await fetch(state.serverUrl + '/api/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, name }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        toast('Workspace error: ' + (err.error || resp.statusText), 'error');
+        return;
+      }
+      const data = await resp.json();
+      toast('Workspace opened: ' + (data.active?.name || name), 'success');
+      state.backendConnected = true;
+      await refreshWorkspace();
+    } catch (e) {
+      toast('Failed to open workspace: ' + e.message, 'error');
+    }
+  }
+
+  // ── Attach File ──────────────────────────────────────────────
+  async function handleAttachFile() {
+    const file = dom.attachFileInput.files[0];
+    if (!file) return;
+    try {
+      const content = await file.text();
+      setAttachmentPreview(file.name, content);
+    } catch (e) {
+      toast('Failed to read file: ' + e.message, 'error');
+    }
+    dom.attachFileInput.value = '';
+  }
+
+  function setAttachmentPreview(name, content) {
+    state.attachFileName = name;
+    state.attachFileContent = content;
+    dom.attachPreviewName.textContent = name;
+    dom.attachPreview.style.display = 'flex';
+  }
+
+  function clearAttachment() {
+    state.attachFileName = null;
+    state.attachFileContent = null;
+    dom.attachPreview.style.display = 'none';
+    dom.attachFileInput.value = '';
+  }
+
   // ── Theme ────────────────────────────────────────────────────
   function setTheme(name, persist) {
     if (!THEME_OPTIONS.includes(name)) return;
@@ -1751,6 +2075,71 @@
   function escAttr(str) {
     if (!str) return '';
     return str.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+  }
+
+  function formatTokenUsage(data) {
+    const usage = data && typeof data.usage === 'object' ? data.usage : data;
+    if (!usage || typeof usage !== 'object') return '\u2014';
+
+    const inputTokens = firstNumericValue(
+      usage.input_tokens,
+      usage.prompt_tokens,
+      usage.prompt_token_count,
+      usage.inputTokenCount
+    );
+    const outputTokens = firstNumericValue(
+      usage.output_tokens,
+      usage.completion_tokens,
+      usage.generated_tokens,
+      usage.outputTokenCount
+    );
+    const cachedTokens = firstNumericValue(
+      usage.cached_tokens,
+      usage.cache_creation_input_tokens,
+      usage.cache_read_input_tokens
+    );
+    const totalTokens = firstNumericValue(
+      usage.total_tokens,
+      usage.totalTokenCount,
+      usage.usage,
+      Number.isFinite(inputTokens) && Number.isFinite(outputTokens) ? inputTokens + outputTokens : null
+    );
+
+    if (!Number.isFinite(totalTokens) && !Number.isFinite(inputTokens) && !Number.isFinite(outputTokens)) {
+      return '\u2014';
+    }
+
+    const detailBits = [];
+    if (Number.isFinite(inputTokens)) detailBits.push(formatNumber(inputTokens) + ' in');
+    if (Number.isFinite(outputTokens)) detailBits.push(formatNumber(outputTokens) + ' out');
+    if (Number.isFinite(cachedTokens)) detailBits.push(formatNumber(cachedTokens) + ' cached');
+
+    if (Number.isFinite(totalTokens)) {
+      return detailBits.length
+        ? formatNumber(totalTokens) + ' (' + detailBits.join(' / ') + ')'
+        : formatNumber(totalTokens);
+    }
+
+    return detailBits.join(' / ');
+  }
+
+  function firstNumericValue() {
+    for (let index = 0; index < arguments.length; index += 1) {
+      const value = arguments[index];
+      const numeric = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+      if (Number.isFinite(numeric)) return numeric;
+    }
+    return null;
+  }
+
+  function formatNumber(value) {
+    return new Intl.NumberFormat().format(Math.round(value));
+  }
+
+  function formatBytes(value) {
+    if (!Number.isFinite(value) || value < 1024) return (value || 0) + ' B';
+    if (value < 1024 * 1024) return (value / 1024).toFixed(1) + ' KB';
+    return (value / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
   function formatTime(ts) {

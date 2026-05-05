@@ -168,8 +168,17 @@
               rows="1"
               autofocus
             ></textarea>
+            <input type="file" id="attach-file-input" style="display:none" />
+            <div id="attach-preview" class="attach-preview" style="display:none">
+              <span id="attach-preview-name"></span>
+              <button id="attach-preview-remove" class="attach-preview__remove">&times;</button>
+            </div>
             <div class="input-actions">
-              <button class="input-btn" id="btn-attach" title="Attach file">📎</button>
+              <button class="input-btn" id="btn-attach" title="Attach file" aria-label="Attach file">
+                <svg class="input-btn__icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path d="M7.25 10.25 11.9 5.6a2.5 2.5 0 1 1 3.54 3.54l-6.02 6.01a4 4 0 0 1-5.65-5.65l6.37-6.36" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
+                </svg>
+              </button>
               <button class="input-btn send" id="btn-send" title="Send">↑</button>
             </div>
           </div>
@@ -281,6 +290,9 @@
                 <input type="text" id="cfg-project-dir" placeholder="Auto-detected">
                 <button class="settings-btn" id="btn-pick-folder">Browse</button>
               </div>
+            </div>
+            <div class="settings-actions">
+              <button class="settings-btn settings-btn--primary" id="btn-apply-workspace">Apply</button>
             </div>
           </div>
         </div>

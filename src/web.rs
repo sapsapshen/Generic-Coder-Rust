@@ -33,6 +33,8 @@ const MAX_WORKSPACE_FILE_LIMIT: usize = 200;
 const MAX_SAVED_SESSIONS: usize = 100;
 const MAX_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
 const MAX_UPLOAD_BASE64_LEN: usize = ((MAX_UPLOAD_BYTES + 2) / 3) * 4;
+const MAX_WORKSPACE_TEXT_PREVIEW_BYTES: usize = 2 * 1024 * 1024;
+const MAX_WORKSPACE_IMAGE_PREVIEW_BYTES: usize = 5 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct ServeConfig {
@@ -86,6 +88,11 @@ pub struct AppState {
 struct FilesQuery {
     q: Option<String>,
     limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct WorkspacePreviewQuery {
+    path: String,
 }
 
 #[derive(Deserialize)]
@@ -177,6 +184,25 @@ fn ui_path_allowed(state: &AppState, path: &str, allow_missing: bool) -> bool {
         workspace::is_within_workspace(path)
     } else {
         path_within_root(&state.project_dir, path, allow_missing)
+    }
+}
+
+fn preview_kind_and_mime(path: &StdPath) -> (&'static str, &'static str) {
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    match ext.as_str() {
+        "png" => ("image", "image/png"),
+        "jpg" | "jpeg" => ("image", "image/jpeg"),
+        "gif" => ("image", "image/gif"),
+        "webp" => ("image", "image/webp"),
+        "svg" => ("image", "image/svg+xml"),
+        "bmp" => ("image", "image/bmp"),
+        "ico" => ("image", "image/x-icon"),
+        _ => ("text", "text/plain; charset=utf-8"),
     }
 }
 
@@ -1157,6 +1183,100 @@ async fn workspace_files(Query(query): Query<FilesQuery>) -> Json<Value> {
     Json(json!({"files": files}))
 }
 
+async fn workspace_preview(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<WorkspacePreviewQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let requested_path = query.path.trim();
+    if requested_path.is_empty() {
+        return Err(json_error(StatusCode::BAD_REQUEST, "File path is required"));
+    }
+
+    if !ui_path_allowed(&state, requested_path, false) {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "Path is outside the active workspace",
+        ));
+    }
+
+    let path = std::fs::canonicalize(requested_path)
+        .map_err(|err| json_error(StatusCode::NOT_FOUND, format!("{err}")))?;
+    let metadata = std::fs::metadata(&path)
+        .map_err(|err| json_error(StatusCode::NOT_FOUND, format!("{err}")))?;
+    if metadata.is_dir() {
+        return Err(json_error(StatusCode::BAD_REQUEST, "Preview supports files only"));
+    }
+
+    let (kind, mime) = preview_kind_and_mime(&path);
+    let path_string = path.display().to_string();
+    let relative = workspace::get_relative_path(&path_string);
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    let raw = std::fs::read(&path)
+        .map_err(|err| json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("{err}")))?;
+
+    if kind == "image" {
+        if raw.len() > MAX_WORKSPACE_IMAGE_PREVIEW_BYTES {
+            return Err(json_error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                format!(
+                    "Image preview exceeds {} bytes",
+                    MAX_WORKSPACE_IMAGE_PREVIEW_BYTES
+                ),
+            ));
+        }
+
+        return Ok(Json(json!({
+            "name": file_name,
+            "path": path_string,
+            "rel": relative,
+            "kind": "image",
+            "mime": mime,
+            "size": raw.len(),
+            "data_url": format!(
+                "data:{};base64,{}",
+                mime,
+                base64::engine::general_purpose::STANDARD.encode(&raw)
+            ),
+        })));
+    }
+
+    let truncated = raw.len() > MAX_WORKSPACE_TEXT_PREVIEW_BYTES;
+    let visible = if truncated {
+        &raw[..MAX_WORKSPACE_TEXT_PREVIEW_BYTES]
+    } else {
+        &raw[..]
+    };
+
+    if visible.contains(&0) {
+        return Ok(Json(json!({
+            "name": file_name,
+            "path": path_string,
+            "rel": relative,
+            "kind": "binary",
+            "mime": "application/octet-stream",
+            "size": raw.len(),
+            "message": "Binary file preview is not supported.",
+        })));
+    }
+
+    let content = String::from_utf8_lossy(visible).to_string();
+    Ok(Json(json!({
+        "name": file_name,
+        "path": path_string,
+        "rel": relative,
+        "kind": "text",
+        "mime": mime,
+        "size": raw.len(),
+        "truncated": truncated,
+        "content": content,
+    })))
+}
+
 async fn plan_status() -> Json<Value> {
     Json(json!({
         "in_plan": false,
@@ -1643,6 +1763,7 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/revert", post(revert_file))
         .route("/api/workspace/tree", get(workspace_tree))
         .route("/api/workspace/files", get(workspace_files))
+        .route("/api/workspace/preview", get(workspace_preview))
         .route("/api/plan/status", get(plan_status))
         .route("/api/upload", post(upload_image))
         .route("/api/skills", get(skills_list))

@@ -182,6 +182,7 @@ function createWindow() {
     title: 'Generic Coder',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
+    autoHideMenuBar: process.platform === 'win32',
     vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
     visualEffectState: 'active',
     backgroundColor: '#0a0a0f',
@@ -192,6 +193,10 @@ function createWindow() {
       sandbox: false
     }
   });
+
+  if (process.platform === 'win32') {
+    mainWindow.setMenuBarVisibility(false);
+  }
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
