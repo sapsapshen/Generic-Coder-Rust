@@ -72,7 +72,7 @@ set "BIN_DST=%UI_DIR%\bin\generic-coder-backend.exe"
 
 if exist "%PROJECT_DIR%\Cargo.toml" (
     pushd "%PROJECT_DIR%"
-    cargo build --release 2>&1
+    cargo build --release -j 1 2>&1
     if errorlevel 1 (
         popd
         echo   ERROR: Rust build failed. Check compiler output above.
@@ -142,6 +142,11 @@ echo.
 REM ── 4. 安装依赖并构建 Electron ─────────────────────────────────────
 echo [4/5] Installing dependencies...
 pushd "%UI_DIR%"
+
+REM Set electron mirror for Chinese mainland users to avoid GitHub download timeout
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+set ELECTRON_CUSTOM_DIR=v33.4.11
+
 call npm install 2>&1
 if errorlevel 1 (
     popd
@@ -152,6 +157,10 @@ if errorlevel 1 (
 echo   Done.
 echo.
 echo [5/5] Building Windows installers...
+REM Set mirrors for Chinese mainland users to avoid GitHub download timeout
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+set ELECTRON_CUSTOM_DIR=v33.4.11
+set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
 call npm run build:windows 2>&1
 if errorlevel 1 (
     popd
@@ -168,16 +177,12 @@ echo  Build complete!
 echo ========================================
 echo.
 echo  Output files:
-for %%f in ("%UI_DIR%\dist\Generic Coder-"*.exe "%UI_DIR%\dist\Generic Coder-"*.zip 2>nul) do (
+for %%f in ("%UI_DIR%\dist\Generic Coder-"*.exe) do (
     echo   %%~nxf  (%%~zf bytes)
 )
-if not exist "%UI_DIR%\dist\Generic Coder-*" (
-    echo   (no matching files found in dist/)
-    dir "%UI_DIR%\dist\" /b 2>nul
-)
 echo.
-echo  Expected: Generic Coder-1.0.0-x64.exe (NSIS installer^)
-echo            Generic Coder-1.0.0-x64.zip (portable^)
+echo  Expected: Generic Coder-1.0.0-x64.exe (NSIS installer + portable^)
+
 echo ========================================
 pause
 endlocal
