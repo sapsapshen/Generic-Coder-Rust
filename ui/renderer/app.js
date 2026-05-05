@@ -287,6 +287,7 @@
       if (saved.llmForm) {
         state.llmForm = { ...state.llmForm, ...saved.llmForm };
       }
+      normalizeStoredSessions();
     } catch (e) { /* ignore */ }
   }
 
@@ -892,7 +893,10 @@
     const session = state.sessions.find((s) => s.id === id);
     if (!session) return;
     state.activeSessionId = id;
-    state.messages = session.messages || [];
+    state.messages = Array.isArray(session.messages)
+      ? session.messages.map((msg) => ensurePreviewMessageId(msg))
+      : [];
+    session.messages = state.messages;
     saveSettings();
     renderSessions();
     renderAllMessages();
@@ -905,7 +909,10 @@
     } else {
       const session = state.sessions.find((s) => s.id === state.activeSessionId);
       if (session) {
-        state.messages = session.messages || [];
+        state.messages = Array.isArray(session.messages)
+          ? session.messages.map((msg) => ensurePreviewMessageId(msg))
+          : [];
+        session.messages = state.messages;
         dom.tbSession.textContent = '\u2014 ' + session.name + ' \u2014';
       } else {
         state.activeSessionId = null;
@@ -1104,9 +1111,33 @@
     scrollToBottom();
   }
 
+  function nextPreviewMessageId() {
+    state.previewMessageSeq += 1;
+    return 'preview-' + Date.now() + '-' + state.previewMessageSeq;
+  }
+
+  function ensurePreviewMessageId(msg) {
+    if (!msg || !msg.preview || msg.id) return msg;
+    return { ...msg, id: nextPreviewMessageId() };
+  }
+
+  function normalizeStoredSessions() {
+    if (!Array.isArray(state.sessions)) {
+      state.sessions = [];
+      return;
+    }
+
+    state.sessions = state.sessions.map((session) => ({
+      ...session,
+      messages: Array.isArray(session.messages)
+        ? session.messages.map((msg) => ensurePreviewMessageId(msg))
+        : [],
+    }));
+  }
+
   function addWorkspacePreviewMessage(preview) {
     const msg = {
-      id: 'preview-' + (++state.previewMessageSeq),
+      id: nextPreviewMessageId(),
       role: 'system',
       preview,
       timestamp: new Date().toISOString(),
