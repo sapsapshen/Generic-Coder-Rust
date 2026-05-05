@@ -1228,11 +1228,17 @@
 
     card.appendChild(header);
 
-    if (preview.kind === 'image' && preview.data_url) {
+    const imageSrc = buildWorkspacePreviewImageSrc(preview);
+    if (preview.kind === 'image' && imageSrc) {
       const image = document.createElement('img');
       image.className = 'workspace-preview__image';
-      image.src = preview.data_url;
+      image.src = imageSrc;
       image.alt = preview.name || preview.rel || 'Workspace image preview';
+      image.addEventListener('error', () => {
+        if (preview.data_url && image.src !== preview.data_url) {
+          image.src = preview.data_url;
+        }
+      }, { once: true });
       card.appendChild(image);
     } else if (preview.kind === 'text') {
       const text = document.createElement('pre');
@@ -1247,6 +1253,14 @@
     }
 
     bodyEl.appendChild(card);
+  }
+
+  function buildWorkspacePreviewImageSrc(preview) {
+    if (!preview || preview.kind !== 'image') return '';
+    if (preview.path) {
+      return state.serverUrl + '/api/workspace/preview-content?path=' + encodeURIComponent(preview.path);
+    }
+    return preview.data_url || '';
   }
 
   function renderAllMessages() {

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::Html;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -204,6 +204,33 @@ fn preview_kind_and_mime(path: &StdPath) -> (&'static str, &'static str) {
         "ico" => ("image", "image/x-icon"),
         _ => ("text", "text/plain; charset=utf-8"),
     }
+}
+
+fn resolve_workspace_preview_file(
+    state: &AppState,
+    requested_path: &str,
+) -> Result<(PathBuf, std::fs::Metadata), (StatusCode, Json<Value>)> {
+    let requested_path = requested_path.trim();
+    if requested_path.is_empty() {
+        return Err(json_error(StatusCode::BAD_REQUEST, "File path is required"));
+    }
+
+    if !ui_path_allowed(state, requested_path, false) {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "Path is outside the active workspace",
+        ));
+    }
+
+    let path = std::fs::canonicalize(requested_path)
+        .map_err(|err| json_error(StatusCode::NOT_FOUND, format!("{err}")))?;
+    let metadata = std::fs::metadata(&path)
+        .map_err(|err| json_error(StatusCode::NOT_FOUND, format!("{err}")))?;
+    if metadata.is_dir() {
+        return Err(json_error(StatusCode::BAD_REQUEST, "Preview supports files only"));
+    }
+
+    Ok((path, metadata))
 }
 
 fn summarize_messages(messages: &[Value]) -> String {
@@ -1187,25 +1214,7 @@ async fn workspace_preview(
     State(state): State<Arc<AppState>>,
     Query(query): Query<WorkspacePreviewQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let requested_path = query.path.trim();
-    if requested_path.is_empty() {
-        return Err(json_error(StatusCode::BAD_REQUEST, "File path is required"));
-    }
-
-    if !ui_path_allowed(&state, requested_path, false) {
-        return Err(json_error(
-            StatusCode::FORBIDDEN,
-            "Path is outside the active workspace",
-        ));
-    }
-
-    let path = std::fs::canonicalize(requested_path)
-        .map_err(|err| json_error(StatusCode::NOT_FOUND, format!("{err}")))?;
-    let metadata = std::fs::metadata(&path)
-        .map_err(|err| json_error(StatusCode::NOT_FOUND, format!("{err}")))?;
-    if metadata.is_dir() {
-        return Err(json_error(StatusCode::BAD_REQUEST, "Preview supports files only"));
-    }
+    let (path, _metadata) = resolve_workspace_preview_file(&state, &query.path)?;
 
     let (kind, mime) = preview_kind_and_mime(&path);
     let path_string = path.display().to_string();
@@ -1237,11 +1246,6 @@ async fn workspace_preview(
             "kind": "image",
             "mime": mime,
             "size": raw.len(),
-            "data_url": format!(
-                "data:{};base64,{}",
-                mime,
-                base64::engine::general_purpose::STANDARD.encode(&raw)
-            ),
         })));
     }
 
@@ -1275,6 +1279,44 @@ async fn workspace_preview(
         "truncated": truncated,
         "content": content,
     })))
+}
+
+async fn workspace_preview_content(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<WorkspacePreviewQuery>,
+) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<Value>)> {
+    let (path, _metadata) = resolve_workspace_preview_file(&state, &query.path)?;
+    let (kind, mime) = preview_kind_and_mime(&path);
+    if kind != "image" {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "Direct preview is supported for image files only",
+        ));
+    }
+
+    let raw = std::fs::read(&path)
+        .map_err(|err| json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("{err}")))?;
+    if raw.len() > MAX_WORKSPACE_IMAGE_PREVIEW_BYTES {
+        return Err(json_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!(
+                "Image preview exceeds {} bytes",
+                MAX_WORKSPACE_IMAGE_PREVIEW_BYTES
+            ),
+        ));
+    }
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(mime),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-store"),
+    );
+
+    Ok((headers, raw))
 }
 
 async fn plan_status() -> Json<Value> {
@@ -1764,6 +1806,7 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/workspace/tree", get(workspace_tree))
         .route("/api/workspace/files", get(workspace_files))
         .route("/api/workspace/preview", get(workspace_preview))
+        .route("/api/workspace/preview-content", get(workspace_preview_content))
         .route("/api/plan/status", get(plan_status))
         .route("/api/upload", post(upload_image))
         .route("/api/skills", get(skills_list))
