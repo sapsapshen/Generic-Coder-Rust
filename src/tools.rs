@@ -1708,6 +1708,19 @@ end tell"#,
                     .map_err(|e| anyhow!("osascript triple click failed: {}", e))?;
             }
         }
+        "open_app" | "open_application" => {
+            let app_name = text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
+            let escaped = app_name.replace('\\', "\\\\").replace('"', "\\\"");
+            // Use `open -a` — this activates the app and brings it to the foreground
+            let output = Command::new("open")
+                .args(["-a", app_name])
+                .output()
+                .map_err(|e| anyhow!("open -a '{}' failed: {}", escaped, e))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow!("Failed to open application '{}': {}", app_name, stderr.trim()));
+            }
+        }
         _ => return Err(anyhow!("Unknown action: {}", action)),
     }
 
@@ -1794,6 +1807,18 @@ fn computer_action_linux(
             Command::new("xdotool").args(["click", "--repeat", "3", "1"]).output()
                 .map_err(|e| anyhow!("xdotool triple click failed: {}", e))?;
         }
+        "open_app" | "open_application" => {
+            let app_name = text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
+            // Try xdg-open first, then the command directly
+            let output = Command::new("sh")
+                .args(["-c", &format!("nohup {} &", app_name)])
+                .output()
+                .map_err(|e| anyhow!("Failed to launch '{}': {}", app_name, e))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow!("Failed to open application '{}': {}", app_name, stderr.trim()));
+            }
+        }
         _ => return Err(anyhow!("Unknown action: {}", action)),
     }
     Ok(json!({"status": "ok", "action": action}))
@@ -1860,6 +1885,10 @@ fn computer_action_windows(
         "wait" => {
             let dur = duration.unwrap_or(1.0);
             format!("Start-Sleep -Seconds {}", dur)
+        }
+        "open_app" | "open_application" => {
+            let app_name = text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
+            format!("Start-Process '{}'", app_name.replace('\'', "''"))
         }
         _ => return Err(anyhow!("Unsupported action on Windows: {}", action)),
     };
