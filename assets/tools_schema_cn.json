@@ -69,5 +69,35 @@
     "name": "start_long_term_update",
     "description": "准备开始提炼记忆。发现值得长期记忆的信息（环境事实/用户偏好/避坑经验）时调用此工具。已记忆更新或在自主流程内时无需调用。超15轮完成的任务必须调用以沉淀经验",
     "parameters": {"type": "object", "properties": {}}}
+  },
+  {"type": "function", "function": {
+    "name": "computer_screenshot",
+    "description": "截取用户当前屏幕。返回 base64 PNG 和屏幕尺寸。执行鼠标点击、输入、滚动前应先调用，确保看到的是前台真实界面。",
+    "parameters": {"type": "object", "properties": {
+      "region": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4, "description": "可选区域截图，格式为 [x, y, width, height]；不传则截取主屏幕。"},
+      "display": {"type": "integer", "description": "可选显示器编号（从 1 开始），默认主显示器。"}},
+      "required": []}}
+  },
+  {"type": "function", "function": {
+    "name": "computer_open",
+    "description": "在前台打开桌面应用，并可附带打开 URL 或文件。不要只在回复里声称“已打开浏览器”，应调用此工具真正打开。macOS 下会验证目标应用是否真的进入前台。",
+    "parameters": {"type": "object", "properties": {
+      "application": {"type": "string", "description": "应用名，例如 'Google Chrome'、'Safari'、'Finder'、'Visual Studio Code'。浏览器任务建议显式传入，才能验证前台激活。"},
+      "target": {"type": "string", "description": "可选 URL 或文件路径。若不传 application，则使用系统默认程序打开该目标。"},
+      "wait_timeout_ms": {"type": "integer", "description": "可选，macOS 下等待目标应用成为前台应用的超时时间（毫秒）。", "default": 5000}},
+      "required": []}}
+  },
+  {"type": "function", "function": {
+    "name": "computer_action",
+    "description": "对用户电脑执行鼠标或键盘操作。应在 computer_screenshot 之后使用。支持 left_click、right_click、double_click、triple_click、middle_click、mouse_move（需 x/y）、type（需 text）、key（需 text，例如 'cmd+a'、'return'）、scroll（需 direction 和 amount）、wait（需 duration）。坐标以最近一次截图为准。",
+    "parameters": {"type": "object", "properties": {
+      "action": {"type": "string", "description": "动作类型", "enum": ["left_click", "right_click", "double_click", "triple_click", "middle_click", "mouse_move", "type", "key", "scroll", "wait", "left_mouse_down", "left_mouse_up"]},
+      "x": {"type": "integer", "description": "X 坐标（点击 / 移动 / 滚动时需要）。"},
+      "y": {"type": "integer", "description": "Y 坐标（点击 / 移动 / 滚动时需要）。"},
+      "text": {"type": "string", "description": "type 动作的文本，或 key 动作的按键组合，例如 'cmd+a'、'return'。"},
+      "direction": {"type": "string", "description": "滚动方向", "enum": ["up", "down", "left", "right"]},
+      "amount": {"type": "integer", "description": "滚动幅度", "default": 3, "minimum": 1, "maximum": 100},
+      "duration": {"type": "number", "description": "wait 动作的等待秒数。"}},
+      "required": ["action"]}}
   }
 ]

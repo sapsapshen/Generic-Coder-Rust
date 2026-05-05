@@ -49,17 +49,23 @@
         </div>
         <div class="workflow-pipeline" id="workflow-pipeline">
           <div class="workflow-node active" data-mode="work">
-            <span class="workflow-node__icon">▶</span>
+            <svg class="workflow-node__icon workflow-node__icon--filled" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="M5.5 4.5 14.75 10 5.5 15.5Z" fill="currentColor"/>
+            </svg>
             <span class="workflow-node__label">Work</span>
           </div>
           <div class="workflow-connector"></div>
           <div class="workflow-node" data-mode="plan">
-            <span class="workflow-node__icon">◆</span>
+            <svg class="workflow-node__icon workflow-node__icon--filled" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="M10 3.25 16.75 10 10 16.75 3.25 10Z" fill="currentColor"/>
+            </svg>
             <span class="workflow-node__label">Plan</span>
           </div>
           <div class="workflow-connector"></div>
           <div class="workflow-node" data-mode="review">
-            <span class="workflow-node__icon">◇</span>
+            <svg class="workflow-node__icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="M10 3.9 16.1 10 10 16.1 3.9 10Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/>
+            </svg>
             <span class="workflow-node__label">Review</span>
           </div>
         </div>
@@ -134,8 +140,17 @@
           <span class="toolbar-turn" id="toolbar-turn"></span>
         </div>
         <div class="toolbar-right">
-          <button class="toolbar-btn" id="btn-settings" title="Settings">⚙</button>
-          <button class="toolbar-btn stop" id="btn-stop" title="Stop Generation" disabled>■</button>
+          <button class="toolbar-btn" id="btn-settings" title="Settings" aria-label="Settings">
+            <svg class="toolbar-btn__icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <circle cx="10" cy="10" r="2.35" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
+              <path d="M10 3.2v1.7M10 15.1v1.7M15.1 10h1.7M3.2 10h1.7M14.8 5.2l-1.2 1.2M6.4 13.6l-1.2 1.2M14.8 14.8l-1.2-1.2M6.4 6.4 5.2 5.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
+            </svg>
+          </button>
+          <button class="toolbar-btn stop" id="btn-stop" title="Stop Generation" disabled aria-label="Stop Generation">
+            <svg class="toolbar-btn__icon toolbar-btn__icon--stop" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <rect x="4.4" y="4.4" width="11.2" height="11.2" rx="1.6" fill="currentColor"/>
+            </svg>
+          </button>
         </div>
       </div>
 

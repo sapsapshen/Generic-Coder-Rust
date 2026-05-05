@@ -250,6 +250,7 @@
 
   // ── Init ─────────────────────────────────────────────────────
   async function init() {
+    await applyPlatformLayout();
     loadSettings();
     normalizeServerUrl();
     if (window.electronAPI && window.electronAPI.getBackendUrl) {
@@ -264,6 +265,19 @@
     await connectBackend();
     ensureActiveSession();
     bindHintChips();
+  }
+
+  async function applyPlatformLayout() {
+    if (!window.electronAPI || !window.electronAPI.getPlatform) {
+      return;
+    }
+
+    try {
+      const platform = await window.electronAPI.getPlatform();
+      if (platform) {
+        document.body.dataset.platform = platform;
+      }
+    } catch (e) { /* ignore */ }
   }
 
   // ── Settings Persistence ─────────────────────────────────────

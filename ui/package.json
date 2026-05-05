@@ -7,10 +7,10 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "build:macos": "electron-builder --mac --x64 --arm64",
-    "build:macos:x64": "electron-builder --mac --x64",
-    "build:macos:arm64": "electron-builder --mac --arm64",
-    "build:windows": "electron-builder --win --x64",
+    "build:macos": "electron-builder --mac pkg --x64 --arm64",
+    "build:macos:x64": "electron-builder --mac pkg --x64",
+    "build:macos:arm64": "electron-builder --mac pkg --arm64",
+    "build:windows": "electron-builder --win nsis --x64",
     "build:all": "electron-builder --mac --win --x64"
   },
   "build": {
@@ -33,13 +33,13 @@
         "filter": ["generic-coder-backend*"]
       }
     ],
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "artifactName": "${productName}-${version}-${arch}-installer.${ext}",
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "assets/icon.icns",
       "target": [
         {
-          "target": "zip",
+          "target": "pkg",
           "arch": ["x64", "arm64"]
         }
       ],
@@ -47,18 +47,20 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
-    "dmg": {
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    "pkg": {
+      "artifactName": "${productName}-${version}-${arch}-installer.${ext}",
+      "allowAnywhere": true,
+      "allowCurrentUserHome": true,
+      "allowRootDirectory": true,
+      "installLocation": "/Applications",
+      "welcome": "build/pkg-welcome.txt",
+      "conclusion": "build/pkg-conclusion.txt"
     },
     "win": {
       "icon": "assets/icon.ico",
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
-        },
-        {
-          "target": "portable",
           "arch": ["x64"]
         }
       ]

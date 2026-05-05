@@ -456,7 +456,7 @@ impl GenericAgent {
                 }
             };
 
-            let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("./temp"))));
+            let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("temp"))));
             let (output_tx, mut output_rx) = mpsc::channel::<String>(256);
 
             let exit_reason = agent_runner_loop(
@@ -534,7 +534,7 @@ impl GenericAgent {
             }
         };
 
-        let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("./temp"))));
+        let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("temp"))));
         // Set model name for error attribution
         let model_name = client
             .try_read()
@@ -803,7 +803,15 @@ pub struct AgentHandler {
 
 impl AgentHandler {
     pub fn new(cwd: PathBuf) -> Self {
-        // Derive project_dir from cwd: cwd is usually ./temp, so go up one level
+        let cwd = if cwd.is_absolute() {
+            cwd
+        } else {
+            std::env::current_dir()
+                .map(|base| base.join(&cwd))
+                .unwrap_or(cwd)
+        };
+        let cwd = cwd.canonicalize().unwrap_or(cwd);
+        // Derive project_dir from cwd: cwd is usually the temp task directory.
         let project_dir = if cwd.ends_with("temp") {
             cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd.clone())
         } else {
@@ -863,6 +871,7 @@ impl AgentHandler {
             "media_info" => self.do_media_info(&args),
             "media_extract" => self.do_media_extract(&args),
             "computer_screenshot" => self.do_computer_screenshot(&args),
+            "computer_open" => self.do_computer_open(&args),
             "computer_action" => self.do_computer_action(&args),
             _ => {
                 self.record_error(
@@ -1569,6 +1578,34 @@ impl AgentHandler {
         }
     }
 
+    fn do_computer_open(&self, args: &Value) -> StepOutcome {
+        let application = args.get("application").and_then(|v| v.as_str());
+        let target = args.get("target").and_then(|v| v.as_str());
+        let wait_timeout_ms = args.get("wait_timeout_ms").and_then(|v| v.as_u64());
+
+        match crate::tools::computer_open(application, target, wait_timeout_ms) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "computer_open",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    json!({"application": application, "target": target}),
+                );
+                StepOutcome {
+                    data: json!({"status": "error", "error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
     // ── Plan mode helpers ────────────────────────────────────────────────
 
     pub fn enter_plan_mode(&mut self, plan_path: String) {
@@ -1659,6 +1696,14 @@ pub async fn agent_runner_loop(
 ) -> Result<HashMap<String, Value>> {
     use crate::types::ContentBlock;
 
+    let aborted_exit = || {
+        let mut exit = HashMap::new();
+        exit.insert("reason".into(), Value::String("aborted".into()));
+        exit.insert("message".into(), Value::String("Stopped by user".into()));
+        exit.insert("final_output".into(), Value::String("[ABORTED]".into()));
+        exit
+    };
+
     // Build initial messages
     let mut messages: Vec<Message> = Vec::new();
     messages.push(Message {
@@ -1676,11 +1721,7 @@ pub async fn agent_runner_loop(
         // Check for stop signal before each turn
         if stop_signal.as_ref().map_or(false, |s| s.load(Ordering::SeqCst)) {
             let _ = output_tx.send("\n\n[ABORTED] Stopped by user.\n".to_string()).await;
-            let mut exit = HashMap::new();
-            exit.insert("reason".into(), Value::String("aborted".into()));
-            exit.insert("message".into(), Value::String("Stopped by user".into()));
-            exit.insert("final_output".into(), Value::String("[ABORTED]".into()));
-            return Ok(exit);
+            return Ok(aborted_exit());
         }
         *handler.write().unwrap().current_turn.write().unwrap() = turn;
 
@@ -1709,8 +1750,29 @@ pub async fn agent_runner_loop(
         };
 
         // Stream text chunks to output
-        while let Some(chunk) = stream_rx.recv().await {
-            let _ = output_tx.send(chunk).await;
+        loop {
+            tokio::select! {
+                maybe_chunk = stream_rx.recv() => {
+                    match maybe_chunk {
+                        Some(chunk) => {
+                            if stop_signal.as_ref().map_or(false, |s| s.load(Ordering::SeqCst)) {
+                                response_handle.abort();
+                                let _ = output_tx.send("\n\n[ABORTED] Stopped by user.\n".to_string()).await;
+                                return Ok(aborted_exit());
+                            }
+                            let _ = output_tx.send(chunk).await;
+                        }
+                        None => break,
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(50)), if stop_signal.is_some() => {
+                    if stop_signal.as_ref().map_or(false, |s| s.load(Ordering::SeqCst)) {
+                        response_handle.abort();
+                        let _ = output_tx.send("\n\n[ABORTED] Stopped by user.\n".to_string()).await;
+                        return Ok(aborted_exit());
+                    }
+                }
+            }
         }
 
         let response = match response_handle.await {
@@ -1859,6 +1921,12 @@ mod tests {
         chunk: String,
     }
 
+    struct SlowMockLlmClient {
+        calls: Arc<AtomicUsize>,
+        response: LlmResponse,
+        chunks: Vec<(u64, String)>,
+    }
+
     #[async_trait]
     impl LlmClient for MockLlmClient {
         fn name(&self) -> &str {
@@ -1886,6 +1954,44 @@ mod tests {
             let response = self.response.clone();
             let handle = tokio::spawn(async move {
                 let _ = tx.send(chunk).await;
+                Ok(response)
+            });
+            Ok((rx, handle))
+        }
+    }
+
+    #[async_trait]
+    impl LlmClient for SlowMockLlmClient {
+        fn name(&self) -> &str {
+            "mock"
+        }
+
+        fn model(&self) -> &str {
+            "mock-model"
+        }
+
+        fn clear_tools_cache(&mut self) {}
+
+        fn set_tools(&mut self, _tools: Vec<ToolSchema>) {}
+
+        fn set_system(&mut self, _system: &str) {}
+
+        async fn chat(
+            &mut self,
+            _messages: Vec<Message>,
+            _tools: Vec<ToolSchema>,
+        ) -> Result<(mpsc::Receiver<String>, JoinHandle<Result<LlmResponse>>)> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let (tx, rx) = mpsc::channel(8);
+            let chunks = self.chunks.clone();
+            let response = self.response.clone();
+            let handle = tokio::spawn(async move {
+                for (delay_ms, chunk) in chunks {
+                    if delay_ms > 0 {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                    }
+                    let _ = tx.send(chunk).await;
+                }
                 Ok(response)
             });
             Ok((rx, handle))
@@ -1934,5 +2040,55 @@ mod tests {
             exit.get("final_output").and_then(|value| value.as_str()),
             Some("Hello!")
         );
+    }
+
+    #[tokio::test]
+    async fn stop_signal_interrupts_streaming_immediately() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let client: Arc<TokioRwLock<dyn LlmClient>> =
+            Arc::new(TokioRwLock::new(SlowMockLlmClient {
+                calls: calls.clone(),
+                response: LlmResponse {
+                    thinking: String::new(),
+                    content: "Hello world".to_string(),
+                    tool_calls: Vec::new(),
+                    raw: "Hello world".to_string(),
+                    stop_reason: "end_turn".to_string(),
+                },
+                chunks: vec![(0, "Hello".to_string()), (300, " world".to_string())],
+            }));
+        let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("."))));
+        let (output_tx, mut output_rx) = mpsc::channel(8);
+        let stop_signal = Arc::new(AtomicBool::new(false));
+        let stop_setter = stop_signal.clone();
+
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            stop_setter.store(true, Ordering::SeqCst);
+        });
+
+        let exit = agent_runner_loop(
+            client,
+            String::new(),
+            "hello".to_string(),
+            handler,
+            Vec::new(),
+            5,
+            false,
+            output_tx,
+            Some(stop_signal),
+        )
+        .await
+        .unwrap();
+
+        let mut streamed = String::new();
+        while let Some(chunk) = output_rx.recv().await {
+            streamed.push_str(&chunk);
+        }
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(streamed.contains("Hello"));
+        assert!(!streamed.contains(" world"));
+        assert_eq!(exit.get("reason").and_then(|value| value.as_str()), Some("aborted"));
     }
 }

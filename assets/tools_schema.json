@@ -191,6 +191,14 @@
       "display": {"type": "integer", "description": "[Optional] Display index to capture (1-based). Default is primary display."}},
       "required": []}}},
   {"type": "function", "function": {
+    "name": "computer_open",
+    "description": "Open a desktop application in the foreground and optionally open a URL or file with it. Use this instead of merely claiming that a browser or app was opened. On macOS, this tool verifies the requested app actually becomes frontmost.",
+    "parameters": {"type": "object", "properties": {
+      "application": {"type": "string", "description": "Application name, e.g. 'Google Chrome', 'Safari', 'Finder', 'Visual Studio Code'. For browser tasks, set this explicitly so foreground activation can be verified."},
+      "target": {"type": "string", "description": "[Optional] URL or file path to open with the application. If application is omitted, opens the target with the system default handler."},
+      "wait_timeout_ms": {"type": "integer", "description": "[Optional] How long to wait for the application to become frontmost on macOS.", "default": 5000}},
+      "required": []}}},
+  {"type": "function", "function": {
     "name": "computer_action",
     "description": "Perform mouse or keyboard actions on the user's computer. Use after computer_screenshot. Supported actions: left_click, right_click, double_click, triple_click, middle_click, mouse_move (requires x,y), type (requires text), key (requires text as key chord, e.g. 'cmd+a', 'return'), scroll (requires direction: up/down/left/right, amount: 1-100), wait (requires duration in seconds). Coordinates reference the most recent screenshot.",
     "parameters": {"type": "object", "properties": {

@@ -70,13 +70,11 @@ fn canonicalize_for_access(path: &Path, allow_missing: bool) -> Result<PathBuf> 
     Ok(canonical_parent.join(file_name))
 }
 
-fn resolve_local_path(path: &str, allow_missing: bool) -> Result<PathBuf> {
+fn resolve_local_path_from(base: &Path, path: &str, allow_missing: bool) -> Result<PathBuf> {
     let requested = if Path::new(path).is_absolute() {
         PathBuf::from(path)
     } else {
-        std::env::current_dir()
-            .context("Cannot resolve current working directory")?
-            .join(path)
+        base.join(path)
     };
 
     let root = access_root()?;
@@ -90,6 +88,11 @@ fn resolve_local_path(path: &str, allow_missing: bool) -> Result<PathBuf> {
     Ok(resolved)
 }
 
+fn resolve_local_path(path: &str, allow_missing: bool) -> Result<PathBuf> {
+    let base = std::env::current_dir().context("Cannot resolve current working directory")?;
+    resolve_local_path_from(&base, path, allow_missing)
+}
+
 fn resolve_search_root(path: &str) -> Result<PathBuf> {
     let requested = if path.trim().is_empty() {
         access_root()?
@@ -101,6 +104,67 @@ fn resolve_search_root(path: &str) -> Result<PathBuf> {
         return Err(anyhow!("Not a directory: {}", requested.display()));
     }
     Ok(requested)
+}
+
+fn resolve_search_root_from(base: &Path, path: Option<&str>) -> Result<PathBuf> {
+    let requested = match path {
+        Some(path) if !path.trim().is_empty() => resolve_local_path_from(base, path, false)?,
+        _ => canonicalize_for_access(base, false)?,
+    };
+
+    if !requested.is_dir() {
+        return Err(anyhow!("Not a directory: {}", requested.display()));
+    }
+    Ok(requested)
+}
+
+fn run_command_checked(command: &mut Command, label: &str) -> Result<String> {
+    let output = command
+        .output()
+        .with_context(|| format!("Failed to start {label}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("exit status {}", output.status)
+        };
+        return Err(anyhow!("{label} failed: {detail}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn normalize_application_name(name: &str) -> String {
+    let trimmed = name.trim().trim_end_matches(".app").trim();
+    let collapsed = trimmed
+        .to_ascii_lowercase()
+        .replace('-', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    match collapsed.as_str() {
+        "chrome" | "google chrome" => "Google Chrome".to_string(),
+        "edge" | "microsoft edge" | "ms edge" => "Microsoft Edge".to_string(),
+        "firefox" | "mozilla firefox" => "Firefox".to_string(),
+        "safari" => "Safari".to_string(),
+        "arc" | "arc browser" => "Arc".to_string(),
+        "finder" => "Finder".to_string(),
+        "terminal" => "Terminal".to_string(),
+        "iterm" | "iterm2" => "iTerm".to_string(),
+        "vscode" | "vs code" | "visual studio code" | "code" => {
+            "Visual Studio Code".to_string()
+        }
+        _ => trimmed.to_string(),
+    }
+}
+
+fn application_names_match(actual: &str, expected: &str) -> bool {
+    normalize_application_name(actual).eq_ignore_ascii_case(&normalize_application_name(expected))
 }
 
 fn backup_path(file_path: &str, task_id: Option<&str>) -> Result<PathBuf> {
@@ -253,8 +317,7 @@ pub fn code_run(
     stop_signal: Option<Arc<AtomicBool>>,
 ) -> Result<JsonResult> {
     let cwd = resolve_search_root(cwd.unwrap_or("."))?;
-    let cwd_string = cwd.display().to_string();
-    let code_cwd = resolve_search_root(code_cwd.unwrap_or(&cwd_string))?;
+    let code_cwd = resolve_search_root_from(&cwd, code_cwd)?;
     let timeout_dur = timeout.map(Duration::from_secs);
 
     let (cmd, args, write_file) = match code_type.to_lowercase().as_str() {
@@ -1178,6 +1241,229 @@ pub fn computer_screenshot(
     }))
 }
 
+pub fn computer_open(
+    application: Option<&str>,
+    target: Option<&str>,
+    wait_timeout_ms: Option<u64>,
+) -> Result<JsonResult> {
+    let result = if cfg!(target_os = "macos") {
+        computer_open_macos(application, target, wait_timeout_ms)
+    } else if cfg!(target_os = "linux") {
+        computer_open_linux(application, target)
+    } else {
+        computer_open_windows(application, target)
+    }?;
+
+    Ok(result)
+}
+
+#[cfg(target_os = "macos")]
+fn frontmost_application_macos() -> Result<String> {
+    let script = r#"tell application "System Events" to get name of first application process whose frontmost is true"#;
+    run_command_checked(
+        Command::new("osascript").arg("-e").arg(script),
+        "frontmost app query",
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn activate_application_macos(application: &str) -> Result<()> {
+    let script = format!(
+        r#"tell application "{}" to activate"#,
+        application.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    run_command_checked(
+        Command::new("osascript").arg("-e").arg(script),
+        "application activation",
+    )?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn wait_for_frontmost_application_macos(application: &str, timeout_ms: u64) -> Result<String> {
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    let mut last_seen = String::new();
+    let application = normalize_application_name(application);
+
+    while Instant::now() <= deadline {
+        if let Ok(frontmost) = frontmost_application_macos() {
+            last_seen = frontmost.clone();
+            if application_names_match(&frontmost, &application) {
+                return Ok(frontmost);
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(150));
+    }
+
+    let detail = if last_seen.is_empty() {
+        "unknown".to_string()
+    } else {
+        last_seen
+    };
+    Err(anyhow!(
+        "Opened {}, but it did not become the frontmost application within {} ms (current frontmost: {})",
+        application,
+        timeout_ms,
+        detail
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn computer_open_macos(
+    application: Option<&str>,
+    target: Option<&str>,
+    wait_timeout_ms: Option<u64>,
+) -> Result<JsonResult> {
+    let application = application
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_application_name);
+    let target = target.map(str::trim).filter(|value| !value.is_empty());
+    if application.is_none() && target.is_none() {
+        return Err(anyhow!(
+            "computer_open requires at least one of application or target"
+        ));
+    }
+
+    let mut command = Command::new("open");
+    if let Some(application) = application.as_deref() {
+        command.arg("-a").arg(application);
+    }
+    if let Some(target) = target {
+        command.arg(target);
+    }
+    // `open` is the authoritative launch step; fail fast here if it fails.
+    run_command_checked(&mut command, "application open")?;
+
+    // Give the app time to start before we try to verify foreground status.
+    std::thread::sleep(Duration::from_millis(800));
+
+    let timeout_ms = wait_timeout_ms.unwrap_or(5000).clamp(500, 20000);
+    let mut frontmost = None;
+    let mut verified_frontmost = false;
+    let mut warning: Option<String> = None;
+
+    if let Some(application) = application.as_deref() {
+        // Attempt to activate (requires macOS Automation permission – best-effort).
+        if let Err(e) = activate_application_macos(application) {
+            warning = Some(format!("activate warning: {e:#}"));
+        }
+        // Poll for frontmost – best-effort, do NOT error out on timeout.
+        match wait_for_frontmost_application_macos(application, timeout_ms) {
+            Ok(f) => {
+                frontmost = Some(f);
+                verified_frontmost = true;
+            }
+            Err(_) => {
+                // App may still be open; just report what is currently frontmost.
+                frontmost = frontmost_application_macos().ok();
+            }
+        }
+    } else {
+        frontmost = frontmost_application_macos().ok();
+    }
+
+    let mut result = json!({
+        "status": "ok",
+        "application": application,
+        "target": target,
+        "frontmost_application": frontmost,
+        "verified_frontmost": verified_frontmost,
+    });
+    if let Some(w) = warning {
+        result["warning"] = json!(w);
+    }
+    Ok(result)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn computer_open_macos(
+    _application: Option<&str>,
+    _target: Option<&str>,
+    _wait_timeout_ms: Option<u64>,
+) -> Result<JsonResult> {
+    unreachable!()
+}
+
+#[cfg(target_os = "linux")]
+fn computer_open_linux(application: Option<&str>, target: Option<&str>) -> Result<JsonResult> {
+    let application = application.map(str::trim).filter(|value| !value.is_empty());
+    let target = target.map(str::trim).filter(|value| !value.is_empty());
+    if application.is_none() && target.is_none() {
+        return Err(anyhow!(
+            "computer_open requires at least one of application or target"
+        ));
+    }
+
+    if let Some(application) = application {
+        let mut command = Command::new(application);
+        if let Some(target) = target {
+            command.arg(target);
+        }
+        run_command_checked(&mut command, "application open")?;
+    } else if let Some(target) = target {
+        run_command_checked(Command::new("xdg-open").arg(target), "target open")?;
+    }
+
+    Ok(json!({
+        "status": "ok",
+        "application": application,
+        "target": target,
+        "verified_frontmost": false,
+    }))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn computer_open_linux(_application: Option<&str>, _target: Option<&str>) -> Result<JsonResult> {
+    unreachable!()
+}
+
+#[cfg(target_os = "windows")]
+fn computer_open_windows(application: Option<&str>, target: Option<&str>) -> Result<JsonResult> {
+    let application = application.map(str::trim).filter(|value| !value.is_empty());
+    let target = target.map(str::trim).filter(|value| !value.is_empty());
+    if application.is_none() && target.is_none() {
+        return Err(anyhow!(
+            "computer_open requires at least one of application or target"
+        ));
+    }
+
+    let script = match (application, target) {
+        (Some(application), Some(target)) => format!(
+            "Start-Process -FilePath '{}' -ArgumentList '{}'",
+            application.replace('\'', "''"),
+            target.replace('\'', "''")
+        ),
+        (Some(application), None) => format!(
+            "Start-Process -FilePath '{}'",
+            application.replace('\'', "''")
+        ),
+        (None, Some(target)) => format!("Start-Process '{}'", target.replace('\'', "''")),
+        (None, None) => unreachable!(),
+    };
+
+    run_command_checked(
+        Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(script),
+        "application open",
+    )?;
+
+    Ok(json!({
+        "status": "ok",
+        "application": application,
+        "target": target,
+        "verified_frontmost": false,
+    }))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn computer_open_windows(_application: Option<&str>, _target: Option<&str>) -> Result<JsonResult> {
+    unreachable!()
+}
+
 pub fn computer_action(
     action: &str,
     x: Option<u64>,
@@ -1740,6 +2026,44 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("outside the active workspace"));
+    }
+
+    #[test]
+    fn test_resolve_search_root_from_uses_base_for_relative_paths() {
+        let root = PathBuf::from("temp/test code run spaces");
+        let base = root.join("runner cwd");
+        let nested = base.join("child dir");
+        fs::create_dir_all(&nested).unwrap();
+
+        let resolved = resolve_search_root_from(&base, Some("./child dir")).unwrap();
+        assert_eq!(resolved, fs::canonicalize(&nested).unwrap());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_resolve_search_root_from_defaults_to_base() {
+        let base = PathBuf::from("temp/test code run default");
+        fs::create_dir_all(&base).unwrap();
+
+        let resolved = resolve_search_root_from(&base, Some("")).unwrap();
+        assert_eq!(resolved, fs::canonicalize(&base).unwrap());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_normalize_application_name_maps_common_aliases() {
+        assert_eq!(normalize_application_name("chrome"), "Google Chrome");
+        assert_eq!(normalize_application_name("Google Chrome.app"), "Google Chrome");
+        assert_eq!(normalize_application_name("vscode"), "Visual Studio Code");
+    }
+
+    #[test]
+    fn test_application_names_match_uses_normalized_aliases() {
+        assert!(application_names_match("Google Chrome", "chrome"));
+        assert!(application_names_match("Visual Studio Code", "code"));
+        assert!(!application_names_match("Safari", "Firefox"));
     }
 
     #[test]

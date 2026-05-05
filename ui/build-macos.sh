@@ -7,7 +7,7 @@ UI_DIR="$SCRIPT_DIR"
 ASSETS_DIR="$UI_DIR/assets"
 
 echo "========================================"
-echo " Generic Coder — macOS DMG Builder"
+echo " Generic Coder — macOS PKG Builder"
 echo "========================================"
 echo ""
 
@@ -15,22 +15,23 @@ echo ""
 command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js not found. Install from https://nodejs.org"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "ERROR: npm not found."; exit 1; }
 
-# electron-builder needs `python` (not just python3) for blockmap generation
-if ! command -v python >/dev/null 2>&1; then
-  if command -v python3 >/dev/null 2>&1; then
-    PYTHON3_PATH="$(command -v python3)"
-    sudo ln -sf "$PYTHON3_PATH" "${PYTHON3_PATH%/python3}/python" 2>/dev/null || {
-      echo "WARNING: Cannot create python symlink. Blockmap generation may fail."
-      echo "  Run: sudo ln -sf \$(which python3) /opt/homebrew/bin/python"
-    }
-  fi
-fi
-
 # ── Generate icons from SVG ─────────────────────────────────────
 echo "Generating app icon..."
 
-if [ -f "$ASSETS_DIR/icon.icns" ] && [ "${1:-}" != "--force-icons" ]; then
-  echo "  Icons already exist. Skipping (use --force-icons to regenerate)."
+FORCE_ICONS=false
+if [ "${1:-}" = "--force-icons" ]; then
+  FORCE_ICONS=true
+fi
+
+ICONS_STALE=false
+if [ ! -f "$ASSETS_DIR/icon.png" ] || [ ! -f "$ASSETS_DIR/icon.icns" ] || [ ! -f "$ASSETS_DIR/icon.ico" ]; then
+  ICONS_STALE=true
+elif [ "$ASSETS_DIR/icon.svg" -nt "$ASSETS_DIR/icon.png" ] || [ "$ASSETS_DIR/icon.svg" -nt "$ASSETS_DIR/icon.icns" ] || [ "$ASSETS_DIR/icon.svg" -nt "$ASSETS_DIR/icon.ico" ]; then
+  ICONS_STALE=true
+fi
+
+if [ "$FORCE_ICONS" = false ] && [ "$ICONS_STALE" = false ]; then
+  echo "  Icons are up to date. Skipping (use --force-icons to regenerate anyway)."
 else
   cd "$ASSETS_DIR"
 
@@ -120,119 +121,37 @@ cd "$UI_DIR"
 npm install 2>&1
 echo ""
 
-# ── Build Electron app (ZIP only, per-arch) ────────────────────
-echo "Building macOS .app bundles..."
-echo "  Building x64 (ZIP)..."
+# ── Build Electron installers (PKG, per-arch) ──────────────────
+APP_VERSION="$(node -p "require('./package.json').version")"
+X64_INSTALLER="$UI_DIR/dist/Generic Coder-${APP_VERSION}-x64-installer.pkg"
+ARM64_INSTALLER="$UI_DIR/dist/Generic Coder-${APP_VERSION}-arm64-installer.pkg"
+
+echo "Building macOS installer packages..."
+rm -f "$UI_DIR"/dist/*.pkg 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.dmg 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.zip 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.blockmap 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.yml 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.yaml 2>/dev/null || true
+
+echo "  Building x64 PKG..."
 npm run build:macos:x64 2>&1
-echo "  Building arm64 (ZIP)..."
+echo "  Building arm64 PKG..."
 npm run build:macos:arm64 2>&1
 
-# ── Create DMGs manually ────────────────────────────────────────
-echo ""
-echo "Creating DMG files..."
+[ -f "$X64_INSTALLER" ] || { echo "ERROR: Missing x64 installer: $X64_INSTALLER"; exit 1; }
+[ -f "$ARM64_INSTALLER" ] || { echo "ERROR: Missing arm64 installer: $ARM64_INSTALLER"; exit 1; }
 
-create_dmg() {
-  local ARCH="$1"
-  local APP_DIR="$2"
-  local DMG_OUT="$3"
-  local TMP_DMG="/tmp/gc-dmg-${ARCH}-$$.dmg"
-  local TMP_MOUNT="/tmp/gc-mount-${ARCH}-$$"
-
-  echo "  Creating ${ARCH} DMG..."
-
-  # Create temporary DMG with the .app inside
-  rm -f "$TMP_DMG"
-  mkdir -p "$TMP_MOUNT"
-
-  hdiutil create \
-    -srcfolder "$APP_DIR" \
-    -volname "Generic Coder" \
-    -anyowners \
-    -nospotlight \
-    -format UDRW \
-    -fs APFS \
-    -quiet \
-    "$TMP_DMG" || { echo "  ERROR: Failed to create temp DMG"; return 1; }
-
-  # Mount it
-  hdiutil attach -readwrite -noverify -noautoopen -mountpoint "$TMP_MOUNT" "$TMP_DMG" -quiet || {
-    echo "  ERROR: Failed to mount temp DMG"
-    rm -f "$TMP_DMG"
-    return 1
-  }
-
-  # Create Applications symlink
-  ln -sf /Applications "$TMP_MOUNT/Applications" 2>/dev/null || true
-
-  # Set icon positions using AppleScript (optional, cosmetic)
-  for i in 1 2 3; do
-    osascript -e "
-      tell application \"Finder\"
-        try
-          tell disk \"Generic Coder\"
-            open
-            set current view of container window to icon view
-            set toolbar visible of container window to false
-            set statusbar visible of container window to false
-            set the bounds of container window to {400, 100, 900, 450}
-            set theViewOptions to the icon view options of container window
-            set arrangement of theViewOptions to not arranged
-            set icon size of theViewOptions to 72
-            set position of item \"Generic Coder.app\" of container window to {160, 200}
-            set position of item \"Applications\" of container window to {480, 200}
-            close
-            update
-          end tell
-        end try
-      end tell
-    " 2>/dev/null && break
-    sleep 0.5
-  done
-
-  # Make sure Finder writes its metadata before detaching
-  sleep 1
-
-  # Detach
-  hdiutil detach "$TMP_MOUNT" -quiet 2>/dev/null || {
-    hdiutil detach "$TMP_MOUNT" -force 2>/dev/null || true
-  }
-
-  # Convert to compressed read-only DMG
-  rm -f "$DMG_OUT"
-  hdiutil convert "$TMP_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_OUT" -quiet || {
-    echo "  ERROR: Failed to convert DMG"
-    rm -f "$TMP_DMG"
-    return 1
-  }
-
-  rm -f "$TMP_DMG"
-  echo "  → $(basename "$DMG_OUT") ($(du -sh "$DMG_OUT" | cut -f1))"
-}
-
-# Create x64 DMG
-create_dmg "x64" \
-  "$UI_DIR/dist/mac/Generic Coder.app" \
-  "$UI_DIR/dist/Generic Coder-1.0.0-x64.dmg"
-
-# Create arm64 DMG
-create_dmg "arm64" \
-  "$UI_DIR/dist/mac-arm64/Generic Coder.app" \
-  "$UI_DIR/dist/Generic Coder-1.0.0-arm64.dmg"
-
-# ── Clean up non-arch outputs ─────────────────────────────────
-# Remove the generic (non-arch) files if electron-builder created them anyway
-rm -f "$UI_DIR/dist/Generic Coder-1.0.0-mac.zip" 2>/dev/null || true
-rm -f "$UI_DIR/dist/Generic Coder-1.0.0.dmg" 2>/dev/null || true
-# Remove x64-mac.zip since electron-builder produces Generic Coder-1.0.0-x64-mac.zip
-rm -f "$UI_DIR/dist/Generic Coder-1.0.0-x64-mac.zip" 2>/dev/null || true
-# Rename x64 zip to match expected naming: x64-mac.zip
-if [ -f "$UI_DIR/dist/Generic Coder-1.0.0-x64.zip" ]; then
-  mv "$UI_DIR/dist/Generic Coder-1.0.0-x64.zip" "$UI_DIR/dist/Generic Coder-1.0.0-x64-mac.zip"
-fi
+rm -rf "$UI_DIR/dist/mac" "$UI_DIR/dist/mac-arm64" 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.dmg 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.zip 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.blockmap 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.yml 2>/dev/null || true
+rm -f "$UI_DIR"/dist/*.yaml 2>/dev/null || true
 
 echo ""
 echo "========================================"
 echo " Done!"
-echo " DMG & ZIP output: ui/dist/"
-ls -lh "$UI_DIR/dist/" 2>/dev/null | grep -E '\.(dmg|zip)$' || echo "  (check dist/ for output)"
+echo " Installer output: ui/dist/"
+ls -lh "$X64_INSTALLER" "$ARM64_INSTALLER"
 echo "========================================"

@@ -265,14 +265,20 @@ cargo run -p tui
 
 **macOS:**
 ```bash
-bash ui/build-macos.sh          # 产出 .dmg 和 .zip
-open ui/dist/Generic\ Coder-*-arm64.dmg
+bash ui/build-macos.sh          # 产出 .pkg 安装器
+open ui/dist/Generic\ Coder-*-arm64-installer.pkg
 ```
 
 **Windows:**
 ```bat
-ui\build-windows.bat            # 产出 NSIS 安装包和 .zip
+ui\build-windows.bat            # 产出 NSIS .exe 安装器
 ```
+
+两端构建脚本都会以 **installer** 为最终产物：
+
+- macOS 输出 `.pkg`，安装时可选择 `/Applications` 或当前用户目录下的 `~/Applications`
+- Windows 输出 NSIS `.exe`，安装时可选择安装目录
+- 安装器会把桌面应用及其运行所需的打包文件展开到所选安装位置，而不是生成仅依赖当前源码目录的启动器
 
 ### 目录结构
 
@@ -471,6 +477,25 @@ cargo test
 cargo check --bin generic-coder
 cargo build --release
 ```
+
+### Desktop packaging
+
+**macOS:**
+```bash
+bash ui/build-macos.sh          # produces .pkg installers
+open ui/dist/Generic\ Coder-*-arm64-installer.pkg
+```
+
+**Windows:**
+```bat
+ui\build-windows.bat            # produces an NSIS .exe installer
+```
+
+The desktop build scripts now emit installer artifacts only:
+
+- macOS uses `.pkg` so Installer can place the packaged app into `/Applications` or `~/Applications`
+- Windows uses an NSIS `.exe` with install-directory selection
+- the installer expands the packaged desktop app and bundled runtime files into the chosen install location instead of generating a launcher tied to the source checkout
 
 ### Project structure
 

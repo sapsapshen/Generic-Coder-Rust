@@ -21,7 +21,7 @@ set "UI_DIR=%SCRIPT_DIR%"
 set "RUST_TARGET=target\release\generic-coder.exe"
 
 echo ========================================
-echo  Generic Coder — Windows NSIS Builder
+echo  Generic Coder — Windows Installer Builder
 echo ========================================
 echo.
 echo  Project dir : %PROJECT_DIR%
@@ -156,11 +156,16 @@ if errorlevel 1 (
 )
 echo   Done.
 echo.
-echo [5/5] Building Windows installers...
+echo [5/5] Building Windows installer...
 REM Set mirrors for Chinese mainland users to avoid GitHub download timeout
 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 set ELECTRON_CUSTOM_DIR=v33.4.11
 set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+if exist "%UI_DIR%\dist\win-unpacked" rmdir /s /q "%UI_DIR%\dist\win-unpacked"
+del /f /q "%UI_DIR%\dist\*.blockmap" >nul 2>&1
+del /f /q "%UI_DIR%\dist\*.yml" >nul 2>&1
+del /f /q "%UI_DIR%\dist\*.yaml" >nul 2>&1
+del /f /q "%UI_DIR%\dist\*portable*.exe" >nul 2>&1
 call npm run build:windows 2>&1
 if errorlevel 1 (
     popd
@@ -171,17 +176,23 @@ if errorlevel 1 (
 popd
 echo.
 
+if exist "%UI_DIR%\dist\win-unpacked" rmdir /s /q "%UI_DIR%\dist\win-unpacked"
+del /f /q "%UI_DIR%\dist\*.blockmap" >nul 2>&1
+del /f /q "%UI_DIR%\dist\*.yml" >nul 2>&1
+del /f /q "%UI_DIR%\dist\*.yaml" >nul 2>&1
+del /f /q "%UI_DIR%\dist\*portable*.exe" >nul 2>&1
+
 REM ── 验证输出 ────────────────────────────────────────────────────────
 echo ========================================
 echo  Build complete!
 echo ========================================
 echo.
-echo  Output files:
-for %%f in ("%UI_DIR%\dist\Generic Coder-"*.exe) do (
+echo  Installer file:
+for %%f in ("%UI_DIR%\dist\Generic Coder-"*-installer.exe) do (
     echo   %%~nxf  (%%~zf bytes)
 )
 echo.
-echo  Expected: Generic Coder-1.0.0-x64.exe (NSIS installer + portable^)
+echo  Expected: Generic Coder-1.0.0-x64-installer.exe ^(NSIS installer^)
 
 echo ========================================
 pause

@@ -456,7 +456,13 @@ html, body {
   background: var(--surface-elevated); border-color: var(--accent);
   box-shadow: 0 0 8px var(--focus-ring);
 }
-.workflow-node__icon { font-size: 12px; color: var(--text-2); width: 18px; text-align: center; }
+.workflow-node__icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex-shrink: 0;
+  color: var(--text-2);
+}
 .workflow-node.active .workflow-node__icon { color: var(--accent); }
 .workflow-node.active .workflow-node__label { color: var(--text-0); font-weight: 600; }
 .workflow-node__label {
@@ -548,8 +554,18 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   transition: all 0.12s ease;
 }
+.toolbar-btn__icon {
+  width: 19px;
+  height: 19px;
+  display: block;
+  flex-shrink: 0;
+}
+.toolbar-btn__icon--stop {
+  width: 16px;
+  height: 16px;
+}
 .toolbar-btn:hover { background: var(--surface-hover); color: var(--text-0); }
-.toolbar-btn.stop { color: var(--accent-red); border-color: var(--accent-red); font-size: 18px; }
+.toolbar-btn.stop { color: var(--accent-red); border-color: var(--accent-red); }
 .toolbar-btn.stop:hover { background: var(--accent-red); color: #fff; }
 .toolbar-btn.stop:disabled { opacity: 0.3; cursor: not-allowed; }
 .toolbar-btn.stop:disabled:hover { background: none; color: var(--accent-red); }
@@ -914,6 +930,7 @@ html, body {
   --font-ui: 'SF Pro Text', 'SF Pro SC', 'PingFang SC', 'PingFang TC', 'Helvetica Neue', 'Segoe UI Variable', system-ui, sans-serif;
   --font-display: 'SF Pro Display', 'SF Pro Text', 'SF Pro SC', 'PingFang SC', 'Helvetica Neue', 'Segoe UI Variable', system-ui, sans-serif;
   --font-mono: 'SF Mono', 'SFMono-Regular', 'Cascadia Code', 'JetBrains Mono', 'Menlo', monospace;
+  --mac-window-controls-safe-top: 34px;
 }
 
 html, body {
@@ -922,6 +939,10 @@ html, body {
 
 #titlebar {
   display: none;
+}
+
+body[data-platform="darwin"] #app {
+  padding-top: var(--mac-window-controls-safe-top);
 }
 
 .toolbar {
@@ -1002,10 +1023,30 @@ html, body {
 }
 
 .toolbar-btn {
-  width: 34px;
-  height: 34px;
-  font-size: 16px;
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+.toolbar-btn__icon {
+  width: 20px;
+  height: 20px;
+}
+
+.toolbar-btn__icon--stop {
+  width: 16px;
+  height: 16px;
+}
+
+.workflow-node {
+  gap: 12px;
+  padding: 8px 14px;
+}
+
+.workflow-node__icon {
+  width: 22px;
+  height: 22px;
 }
 
 .toolbar-btn:hover,

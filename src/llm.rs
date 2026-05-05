@@ -2318,8 +2318,9 @@ impl ToolClient {
         let mut json_strs: Vec<String> = Vec::new();
         let mut errors: Vec<String> = Vec::new();
 
+        // (?s) enables dot-all mode so `.` matches newlines — required for multi-line <tool_use> blocks
         let tool_re = Regex::new(
-            r"<(?:tool_use|tool_call)>(.{15,}?)</(?:tool_use|tool_call)>",
+            r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</(?:tool_use|tool_call)>",
         )
         .unwrap();
         let tool_all: Vec<String> = tool_re
@@ -2335,14 +2336,14 @@ impl ToolClient {
             }
             remaining = tool_re.replace_all(&remaining, "").to_string();
         } else if remaining.contains("<tool_use>") {
-            let weak = remaining
-                .split("<tool_use>")
-                .last()
-                .unwrap_or("")
-                .trim()
-                .trim_matches(&['<', '>'][..])
-                .to_string();
-            if weak.ends_with('}') {
+            // Fallback: extract content between <tool_use> and </tool_use> (or end of string)
+            let after_tag = remaining.split("<tool_use>").last().unwrap_or("");
+            let weak = if let Some(close_pos) = after_tag.find("</tool_use>") {
+                after_tag[..close_pos].trim().to_string()
+            } else {
+                after_tag.trim().to_string()
+            };
+            if weak.starts_with('{') && weak.ends_with('}') {
                 json_strs.push(weak.clone());
             } else if let Some(end) = weak.find("```") {
                 let candidate = weak[..end].trim().to_string();
@@ -2350,9 +2351,12 @@ impl ToolClient {
                     json_strs.push(candidate);
                 }
             }
-            remaining = remaining.replace(&format!("<tool_use>{}", weak), "");
+            if !weak.is_empty() {
+                remaining = remaining.replace(&format!("<tool_use>{}", after_tag.split("</tool_use>").next().unwrap_or("")), "");
+                remaining = remaining.replace("</tool_use>", "");
+            }
         } else if remaining.contains("\"name\":") && remaining.contains("\"arguments\":") {
-            let json_re = Regex::new("\\{.*\"name\".*\\}").unwrap();
+            let json_re = Regex::new("(?s)\\{.*\"name\".*\\}").unwrap();
             if let Some(caps) = json_re.captures(&remaining) {
                 let s = caps.get(0).unwrap().as_str().to_string();
                 json_strs.push(s.clone());
@@ -2689,9 +2693,9 @@ pub fn parse_text_tool_calls(content: &str) -> (Vec<ToolCall>, String) {
         }
     }
 
-    // Try XML tags
+    // Try XML tags — (?s) enables dot-all so multi-line blocks are matched
     let tool_re = Regex::new(
-        r"<(?:tool_use|tool_call)>(.{15,}?)</(?:tool_use|tool_call)>",
+        r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</(?:tool_use|tool_call)>",
     )
     .unwrap();
     for caps in tool_re.captures_iter(&remaining) {
