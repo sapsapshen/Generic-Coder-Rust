@@ -1,19 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM ── macOS build-script 问题清单 & Windows 对策 ──────────────────────
-REM  1. $1 unbound  →  %~1 加双引号默认空 (无位置参数依赖)
-REM  2. 缺少图标工具  →  ICO 已在 macOS 端预生成，跳过生成步骤
-REM  3. python 缺失  →  electron-builder win 不用 python blockmap，跳过
-REM  4. hdiutil 挂载冲突 → Windows NSIS 无此问题，但需清理僵尸 electron-builder
-REM  5. 通用包命名  →  artifactName 已加 ${arch}，Windows 仅 x64
-REM  6. assets 未打包 → 统一复制 *.txt *.json + skills 到 ui/assets/
-REM  7. 二进制未暂存 →  统一复制 generic-coder.exe 到 ui/bin/
-REM  8. 粘滞挂载清理  →  对应: 强制终止残留 electron-builder + NSIS 进程
-REM  9. 顺序架构构建  →  Windows 仅 x64，无多架构竞态
-REM 10. hdiutil convert  →  electron-builder 内部处理 NSIS/portable 输出
-REM ──────────────────────────────────────────────────────────────────
-
 set "SCRIPT_DIR=%~dp0"
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 for %%i in ("%SCRIPT_DIR%\..") do set "PROJECT_DIR=%%~fi"
@@ -21,25 +8,24 @@ set "UI_DIR=%SCRIPT_DIR%"
 set "RUST_TARGET=target\release\generic-coder.exe"
 
 echo ========================================
-echo  Generic Coder — Windows Installer Builder
+echo  Generic Coder - Windows Installer Builder
 echo ========================================
 echo.
 echo  Project dir : %PROJECT_DIR%
 echo  UI dir      : %UI_DIR%
 echo.
 
-REM ── 0. 清理上次构建僵尸进程 ────────────────────────────────────────
+REM -- 0. Cleanup stale build processes ----------------------------------
 echo [0/5] Cleaning up stale build processes...
 taskkill /f /im electron-builder.exe  >nul 2>&1
 taskkill /f /im makensis.exe        >nul 2>&1
 taskkill /f /im generic-coder-backend.exe >nul 2>&1
-REM 清理可能残留的输出锁文件
 if exist "%UI_DIR%\dist\.icon-ico"  del /f /q "%UI_DIR%\dist\.icon-ico"   >nul 2>&1
 if exist "%UI_DIR%\dist\__appImage" rmdir /s /q "%UI_DIR%\dist\__appImage" >nul 2>&1
 echo   Done.
 echo.
 
-REM ── 1. 检查必要工具 ────────────────────────────────────────────────
+REM -- 1. Check prerequisites -------------------------------------------
 echo [1/5] Checking prerequisites...
 
 where node >nul 2>&1 || (
@@ -64,7 +50,7 @@ where cargo >nul 2>&1 && (
 )
 echo.
 
-REM ── 2. 构建 Rust 后端 ──────────────────────────────────────────────
+REM -- 2. Build Rust backend --------------------------------------------
 echo [2/5] Building Rust backend...
 
 set "BIN_SRC=%PROJECT_DIR%\%RUST_TARGET%"
@@ -86,7 +72,6 @@ if exist "%PROJECT_DIR%\Cargo.toml" (
         copy /y "%BIN_SRC%" "%BIN_DST%" >nul 2>&1
         for %%A in ("%BIN_DST%") do echo   Backend binary : %%A (%%~zA bytes)
     ) else (
-        REM cargo 可能输出到不同位置，尝试查找
         for /r "%PROJECT_DIR%\target\release" %%f in (generic-coder.exe) do (
             if not exist "%UI_DIR%\bin" mkdir "%UI_DIR%\bin"
             copy /y "%%f" "%BIN_DST%" >nul 2>&1
@@ -105,10 +90,9 @@ if exist "%PROJECT_DIR%\Cargo.toml" (
 )
 echo.
 
-REM ── 3. 准备打包资源 ────────────────────────────────────────────────
+REM -- 3. Stage assets --------------------------------------------------
 echo [3/5] Staging assets for packaging...
 
-REM Copy backend assets (*.txt, *.json)
 set "SRC_ASSETS=%PROJECT_DIR%\assets"
 set "DST_ASSETS=%UI_DIR%\assets"
 if not exist "%DST_ASSETS%" mkdir "%DST_ASSETS%"
@@ -122,7 +106,6 @@ if exist "%SRC_ASSETS%\*.json" (
     echo   *.json assets copied
 )
 
-REM Copy skills (overwrite target completely to avoid stale files)
 set "SRC_SKILLS=%PROJECT_DIR%\skills"
 set "DST_SKILLS=%DST_ASSETS%\skills"
 if exist "%DST_SKILLS%" rmdir /s /q "%DST_SKILLS%" >nul 2>&1
@@ -131,7 +114,6 @@ if exist "%SRC_SKILLS%" (
     echo   Skills staged
 )
 
-REM Verify staged binary
 if not exist "%BIN_DST%" (
     echo   ERROR: Backend binary missing at %BIN_DST%
     pause
@@ -139,11 +121,10 @@ if not exist "%BIN_DST%" (
 )
 echo.
 
-REM ── 4. 安装依赖并构建 Electron ─────────────────────────────────────
+REM -- 4-5. Install deps and build Electron -----------------------------
 echo [4/5] Installing dependencies...
 pushd "%UI_DIR%"
 
-REM Set electron mirror for Chinese mainland users to avoid GitHub download timeout
 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 set ELECTRON_CUSTOM_DIR=v33.4.11
 
@@ -157,7 +138,6 @@ if errorlevel 1 (
 echo   Done.
 echo.
 echo [5/5] Building Windows installer...
-REM Set mirrors for Chinese mainland users to avoid GitHub download timeout
 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 set ELECTRON_CUSTOM_DIR=v33.4.11
 set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
@@ -182,7 +162,7 @@ del /f /q "%UI_DIR%\dist\*.yml" >nul 2>&1
 del /f /q "%UI_DIR%\dist\*.yaml" >nul 2>&1
 del /f /q "%UI_DIR%\dist\*portable*.exe" >nul 2>&1
 
-REM ── 验证输出 ────────────────────────────────────────────────────────
+REM -- Verify output ----------------------------------------------------
 echo ========================================
 echo  Build complete!
 echo ========================================
@@ -192,7 +172,7 @@ for %%f in ("%UI_DIR%\dist\Generic Coder-"*-installer.exe) do (
     echo   %%~nxf  (%%~zf bytes)
 )
 echo.
-echo  Expected: Generic Coder-1.0.0-x64-installer.exe ^(NSIS installer^)
+echo  Expected: Generic Coder-1.0.0-x64-installer.exe (NSIS installer)
 
 echo ========================================
 pause

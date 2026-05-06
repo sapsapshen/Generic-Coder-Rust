@@ -16,7 +16,7 @@
 //!   fallback with spring-back to primary
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -45,6 +45,20 @@ const CONTEXT_1M_BETA: &str = "context-1m-2025-08-07";
 const PROMPT_CACHE_BETA: &str = "prompt-caching-2024-07-31";
 
 const RETRYABLE_STATUSES: &[u16] = &[408, 409, 425, 429, 500, 502, 503, 504, 529];
+const SMART_HISTORY_KEEP_RECENT_TURNS: usize = 4;
+const SMART_HISTORY_KEEP_RELEVANT_OLDER_TURNS: usize = 2;
+const SMART_HISTORY_TRIGGER_MSGS: usize = 18;
+const SMART_HISTORY_TRIGGER_TURNS: usize = 8;
+const SMART_HISTORY_MIN_TOTAL_CHARS: usize = 12_000;
+const SMART_HISTORY_KEYWORD_LIMIT: usize = 24;
+const SMART_HISTORY_MIN_KEYWORD_LEN: usize = 3;
+const SMART_HISTORY_STOPWORDS: &[&str] = &[
+    "the", "and", "for", "with", "that", "this", "from", "into", "your", "about", "have", "need",
+    "want", "make", "made", "does", "dont", "cant", "should", "would", "could", "please", "help",
+    "work", "works", "working", "current", "latest", "issue", "using", "used", "there", "their",
+    "them", "then", "when", "what", "where", "which", "while", "been", "were", "will", "just",
+    "more", "less", "very", "much", "some", "than", "over", "also", "only", "still",
+];
 
 lazy_static::lazy_static! {
     static ref THINK_TAG_RE: Regex = Regex::new(r"<think(?:ing)?>(.*?)</think(?:ing)?>").unwrap();
@@ -402,6 +416,7 @@ fn compress_history_tags(messages: &mut [Value], keep_recent: usize, max_len: us
 }
 
 fn trim_messages_history(history: &mut Vec<Value>, context_win: usize) {
+    smart_prune_irrelevant_history(history, context_win);
     compress_history_tags(history, 10, 800, false);
     let mut cost: usize = history
         .iter()
@@ -434,6 +449,216 @@ fn trim_messages_history(history: &mut Vec<Value>, context_win: usize) {
             history.len()
         );
     }
+}
+
+fn smart_prune_irrelevant_history(history: &mut Vec<Value>, context_win: usize) {
+    let user_turns = history
+        .iter()
+        .filter(|msg| msg.get("role").and_then(|v| v.as_str()) == Some("user"))
+        .count();
+    let total_cost: usize = history
+        .iter()
+        .map(|m| serde_json::to_string(m).unwrap_or_default().len())
+        .sum();
+
+    if history.len() < SMART_HISTORY_TRIGGER_MSGS
+        && user_turns <= SMART_HISTORY_TRIGGER_TURNS
+        && total_cost < SMART_HISTORY_MIN_TOTAL_CHARS.min(context_win)
+    {
+        return;
+    }
+
+    let turns = history_turn_ranges(history);
+    if turns.len() <= SMART_HISTORY_KEEP_RECENT_TURNS {
+        return;
+    }
+
+    let focus_terms = recent_focus_terms(history);
+    let recent_turn_start = turns.len().saturating_sub(SMART_HISTORY_KEEP_RECENT_TURNS);
+    let mut keep_flags = vec![false; turns.len()];
+    for flag in keep_flags.iter_mut().skip(recent_turn_start) {
+        *flag = true;
+    }
+
+    let mut relevant_older_turns = Vec::new();
+    for (turn_idx, (start, end)) in turns.iter().copied().enumerate().take(recent_turn_start) {
+        let chunk_text = history[start..end]
+            .iter()
+            .map(extract_message_text)
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if chunk_text.is_empty() {
+            continue;
+        }
+        if !focus_terms.is_empty() && has_focus_overlap(&chunk_text, &focus_terms) {
+            relevant_older_turns.push(turn_idx);
+        }
+    }
+
+    if relevant_older_turns.is_empty() && recent_turn_start > 0 {
+        relevant_older_turns.push(recent_turn_start - 1);
+    }
+
+    for turn_idx in relevant_older_turns
+        .into_iter()
+        .rev()
+        .take(SMART_HISTORY_KEEP_RELEVANT_OLDER_TURNS)
+    {
+        keep_flags[turn_idx] = true;
+    }
+
+    if keep_flags.iter().all(|keep| *keep) {
+        return;
+    }
+
+    let mut next_history = Vec::new();
+    for (turn_idx, (start, end)) in turns.iter().copied().enumerate() {
+        if keep_flags[turn_idx] {
+            next_history.extend(history[start..end].iter().cloned());
+        }
+    }
+
+    if next_history.is_empty() || next_history.len() >= history.len() {
+        return;
+    }
+
+    if let Some(first) = next_history.first_mut() {
+        if first.get("role").and_then(|r| r.as_str()) == Some("user") {
+            *first = _sanitize_leading_user_msg(first);
+        }
+    }
+
+    debug!(
+        "Smart-pruned stale context: {} -> {} messages (focus terms: {:?})",
+        history.len(),
+        next_history.len(),
+        focus_terms
+    );
+    *history = next_history;
+}
+
+fn history_turn_ranges(history: &[Value]) -> Vec<(usize, usize)> {
+    let user_indices: Vec<usize> = history
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, msg)| {
+            (msg.get("role").and_then(|v| v.as_str()) == Some("user")).then_some(idx)
+        })
+        .collect();
+
+    if user_indices.is_empty() {
+        if history.is_empty() {
+            return Vec::new();
+        }
+        return vec![(0, history.len())];
+    }
+
+    let mut turns = Vec::with_capacity(user_indices.len());
+    for (idx, start) in user_indices.iter().copied().enumerate() {
+        let end = user_indices.get(idx + 1).copied().unwrap_or(history.len());
+        turns.push((start, end));
+    }
+    turns
+}
+
+fn extract_message_text(msg: &Value) -> String {
+    let mut out = Vec::new();
+    if let Some(content) = msg.get("content") {
+        append_text_fragments(content, &mut out);
+    }
+    out.join("\n")
+}
+
+fn append_text_fragments(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::String(text) => {
+            if !text.trim().is_empty() {
+                out.push(text.trim().to_string());
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                append_text_fragments(item, out);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(text) = map.get("text") {
+                append_text_fragments(text, out);
+            }
+            if let Some(content) = map.get("content") {
+                append_text_fragments(content, out);
+            }
+            if let Some(input) = map.get("input") {
+                append_text_fragments(input, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn recent_focus_terms(history: &[Value]) -> HashSet<String> {
+    let mut focus_texts = Vec::new();
+    for msg in history.iter().rev() {
+        if msg.get("role").and_then(|v| v.as_str()) == Some("user") {
+            let text = extract_message_text(msg);
+            if !text.is_empty() {
+                focus_texts.push(text);
+            }
+            if focus_texts.len() >= 2 {
+                break;
+            }
+        }
+    }
+    tokenize_terms(&focus_texts.join("\n"), SMART_HISTORY_KEYWORD_LIMIT)
+        .into_iter()
+        .collect()
+}
+
+fn has_focus_overlap(text: &str, focus_terms: &HashSet<String>) -> bool {
+    if focus_terms.is_empty() {
+        return false;
+    }
+    tokenize_terms(text, SMART_HISTORY_KEYWORD_LIMIT * 2)
+        .into_iter()
+        .any(|term| focus_terms.contains(&term))
+}
+
+fn tokenize_terms(text: &str, limit: usize) -> Vec<String> {
+    let mut terms = Vec::new();
+    let mut seen = HashSet::new();
+    let mut current = String::new();
+
+    let push_current = |buf: &mut String, terms: &mut Vec<String>, seen: &mut HashSet<String>| {
+        if buf.is_empty() {
+            return;
+        }
+        let token = std::mem::take(buf);
+        if token.len() < SMART_HISTORY_MIN_KEYWORD_LEN
+            || SMART_HISTORY_STOPWORDS.contains(&token.as_str())
+        {
+            return;
+        }
+        if seen.insert(token.clone()) {
+            terms.push(token);
+        }
+    };
+
+    for ch in text.chars() {
+        if ch.is_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | '\\') {
+            for lower in ch.to_lowercase() {
+                current.push(lower);
+            }
+        } else {
+            push_current(&mut current, &mut terms, &mut seen);
+            if terms.len() >= limit {
+                return terms;
+            }
+        }
+    }
+    push_current(&mut current, &mut terms, &mut seen);
+    terms.truncate(limit);
+    terms
 }
 
 fn _fix_messages(messages: &[Value]) -> Vec<Value> {
@@ -725,6 +950,10 @@ fn _record_usage(usage: &Value, api_mode: &str) {
     if usage.is_null() {
         return;
     }
+    // Store for frontend display
+    if let Ok(mut guard) = GLOBAL_LAST_USAGE.lock() {
+        *guard = Some(usage.clone());
+    }
     match api_mode {
         "responses" => {
             let cached = usage
@@ -766,6 +995,15 @@ fn _record_usage(usage: &Value, api_mode: &str) {
             debug!("[Cache] input={inp} cached={cached}");
         }
     }
+}
+
+/// Global last usage for frontend polling (set by SSE parsers, read by web API).
+static GLOBAL_LAST_USAGE: std::sync::LazyLock<std::sync::Mutex<Option<Value>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+/// Expose last LLM usage to web layer.
+pub fn take_last_usage() -> Option<Value> {
+    GLOBAL_LAST_USAGE.lock().ok().and_then(|mut g| g.take())
 }
 
 // ── SSE Parsers ───────────────────────────────────────────────────────────
@@ -2416,6 +2654,7 @@ impl ToolClient {
             } else {
                 "end_turn".into()
             },
+            usage: None,
         }
     }
 }
@@ -2658,6 +2897,7 @@ pub fn blocks_to_response(blocks: &[Value]) -> LlmResponse {
         tool_calls,
         raw: serde_json::to_string(blocks).unwrap_or_default(),
         stop_reason,
+        usage: None,
     }
 }
 
@@ -2825,5 +3065,80 @@ mod tests {
             }
         }
         assert_eq!(streamed, "Hello!");
+    }
+
+    #[test]
+    fn test_trim_messages_history_drops_irrelevant_old_turns() {
+        let mut history = Vec::new();
+        for idx in 0..6 {
+            history.push(json!({"role": "user", "content": format!("old topic deploy pipeline batch {}", idx)}));
+            history.push(json!({"role": "assistant", "content": format!("deploy notes and release checklist {}", idx)}));
+        }
+        for idx in 0..4 {
+            history.push(json!({"role": "user", "content": format!("auth middleware token refresh bug fix {}", idx)}));
+            history.push(json!({"role": "assistant", "content": format!("auth fix details for refresh token flow {}", idx)}));
+        }
+
+        trim_messages_history(&mut history, 128_000);
+
+        let joined = history
+            .iter()
+            .map(extract_message_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("auth middleware token refresh bug fix"));
+        assert!(!joined.contains("old topic deploy pipeline batch 0"));
+        assert!(!joined.contains("old topic deploy pipeline batch 1"));
+    }
+
+    #[test]
+    fn test_trim_messages_history_keeps_relevant_older_turns() {
+        let mut history = Vec::new();
+        for idx in 0..5 {
+            history.push(json!({"role": "user", "content": format!("legacy deploy docs topic {}", idx)}));
+            history.push(json!({"role": "assistant", "content": format!("deploy response {}", idx)}));
+        }
+        history.push(json!({"role": "user", "content": "parser panic on markdown table rendering"}));
+        history.push(json!({"role": "assistant", "content": "parser investigation and stack trace"}));
+        for idx in 0..4 {
+            history.push(json!({"role": "user", "content": format!("parser fix for markdown renderer {}", idx)}));
+            history.push(json!({"role": "assistant", "content": format!("parser code patch {}", idx)}));
+        }
+
+        trim_messages_history(&mut history, 128_000);
+
+        let joined = history
+            .iter()
+            .map(extract_message_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("parser panic on markdown table rendering"));
+        assert!(joined.contains("parser fix for markdown renderer 3"));
+        assert!(!joined.contains("legacy deploy docs topic 0"));
+    }
+
+    #[test]
+    fn test_trim_messages_history_with_empty_focus_keeps_only_recent_context() {
+        let mut history = Vec::new();
+        for idx in 0..8 {
+            history.push(json!({"role": "user", "content": format!("topic cluster {}", idx)}));
+            history.push(json!({"role": "assistant", "content": format!("response {}", idx)}));
+        }
+        history.push(json!({"role": "user", "content": "ok"}));
+        history.push(json!({"role": "assistant", "content": "ack"}));
+        history.push(json!({"role": "user", "content": "yes"}));
+        history.push(json!({"role": "assistant", "content": "continuing"}));
+
+        trim_messages_history(&mut history, 128_000);
+
+        let joined = history
+            .iter()
+            .map(extract_message_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!joined.contains("topic cluster 0"));
+        assert!(joined.contains("topic cluster 7"));
+        assert!(joined.contains("continuing"));
+        assert!(history.len() < 20);
     }
 }

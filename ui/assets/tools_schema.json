@@ -200,9 +200,9 @@
       "required": []}}},
   {"type": "function", "function": {
     "name": "computer_action",
-    "description": "Perform mouse or keyboard actions on the user's computer. Use after computer_screenshot. Supported actions: left_click, right_click, double_click, triple_click, middle_click, mouse_move (requires x,y), type (requires text), key (requires text as key chord, e.g. 'cmd+a', 'return'), scroll (requires direction: up/down/left/right, amount: 1-100), wait (requires duration in seconds). Coordinates reference the most recent screenshot.",
+    "description": "Perform mouse, keyboard, or application actions on the user's computer. Use after computer_screenshot. Supported actions: open_app (requires text: application name, e.g. 'Google Chrome', launches and brings to foreground), left_click, right_click, double_click, triple_click, middle_click, mouse_move (requires x,y), type (requires text), key (requires text as key chord, e.g. 'cmd+a', 'return'), scroll (requires direction: up/down/left/right, amount: 1-100), wait (requires duration in seconds). Coordinates reference the most recent screenshot.",
     "parameters": {"type": "object", "properties": {
-      "action": {"type": "string", "description": "Action: left_click, right_click, double_click, triple_click, middle_click, mouse_move, type, key, scroll, wait, left_mouse_down, left_mouse_up", "enum": ["left_click", "right_click", "double_click", "triple_click", "middle_click", "mouse_move", "type", "key", "scroll", "wait", "left_mouse_down", "left_mouse_up"]},
+      "action": {"type": "string", "description": "Action: open_app (launch app, requires text), left_click, right_click, double_click, triple_click, middle_click, mouse_move, type, key, scroll, wait, left_mouse_down, left_mouse_up", "enum": ["open_app", "left_click", "right_click", "double_click", "triple_click", "middle_click", "mouse_move", "type", "key", "scroll", "wait", "left_mouse_down", "left_mouse_up"]},
       "x": {"type": "integer", "description": "X coordinate (required for click/mouse_move/scroll)."},
       "y": {"type": "integer", "description": "Y coordinate (required for click/mouse_move/scroll)."},
       "text": {"type": "string", "description": "Text to type (for type action) or key chord (for key action, e.g. 'cmd+a', 'return')."},

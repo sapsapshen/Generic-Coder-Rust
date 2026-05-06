@@ -52,6 +52,8 @@ pub struct PendingTask {
     pub done: bool,
     #[serde(default)]
     pub acp_events: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +145,12 @@ struct LlmConfigPayload {
     model: String,
     apibase: String,
     apikey: String,
+    #[serde(default)]
+    temperature: Option<f64>,
+    #[serde(default)]
+    max_tokens: Option<usize>,
+    #[serde(default)]
+    reasoning_effort: Option<String>,
 }
 
 fn current_timestamp() -> i64 {
@@ -300,9 +308,9 @@ fn build_llm_config(payload: &LlmConfigPayload) -> LlmConfig {
         stream: true,
         timeout: 300,
         read_timeout: 300,
-        temperature: 1.0,
-        max_tokens: Some(8192),
-        reasoning_effort: None,
+        temperature: payload.temperature.unwrap_or(1.0),
+        max_tokens: payload.max_tokens.or(Some(8192)),
+        reasoning_effort: payload.reasoning_effort.clone(),
         service_tier: None,
         thinking_type: None,
         thinking_budget_tokens: None,
@@ -416,6 +424,9 @@ async fn current_llm_form(state: &AppState) -> Value {
         "has_apikey": state.local_only_ui && !cfg.apikey.trim().is_empty(),
         "apibase": cfg.apibase,
         "model": cfg.model,
+        "temperature": cfg.temperature,
+        "max_tokens": cfg.max_tokens.unwrap_or(8192),
+        "reasoning_effort": cfg.reasoning_effort,
     })
 }
 
@@ -975,6 +986,7 @@ async fn chat(
             final_text: String::new(),
             done: false,
             acp_events: Vec::new(),
+            usage: None,
         },
     );
     state
@@ -1009,12 +1021,22 @@ async fn chat(
                     }
                 }
             }
+            if let Some(usage) = item.get("usage") {
+                if !usage.is_null() {
+                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
+                        entry.usage = Some(usage.clone());
+                    }
+                }
+            }
             if let Some(done) = item.get("done").and_then(|value| value.as_str()) {
                 let final_text = done.to_string();
                 if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
                     entry.preview = preview.clone();
                     entry.final_text = final_text.clone();
                     entry.done = true;
+                    if entry.usage.is_none() {
+                        entry.usage = crate::llm::take_last_usage();
+                    }
                 }
                 state_for_spawn
                     .messages
@@ -1027,6 +1049,9 @@ async fn chat(
         if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
             entry.done = true;
             entry.final_text = preview.clone();
+            if entry.usage.is_none() {
+                entry.usage = crate::llm::take_last_usage();
+            }
         }
         if !preview.is_empty() {
             state_for_spawn
@@ -1394,7 +1419,7 @@ async fn skills_list(State(state): State<Arc<AppState>>) -> Result<Json<Value>, 
         .skills_manager
         .list_skills()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok(Json(serde_json::to_value(skills).unwrap_or_default()))
+    Ok(Json(json!({"skills": skills})))
 }
 
 async fn skills_install(

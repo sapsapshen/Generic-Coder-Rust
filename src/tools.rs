@@ -138,6 +138,7 @@ fn run_command_checked(command: &mut Command, label: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+#[allow(dead_code)]
 fn normalize_application_name(name: &str) -> String {
     let trimmed = name.trim().trim_end_matches(".app").trim();
     let collapsed = trimmed
@@ -163,6 +164,7 @@ fn normalize_application_name(name: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn application_names_match(actual: &str, expected: &str) -> bool {
     normalize_application_name(actual).eq_ignore_ascii_case(&normalize_application_name(expected))
 }
@@ -1847,8 +1849,8 @@ fn computer_action_windows(
     let ps_script = match action {
         "left_click" | "right_click" | "double_click" | "middle_click" => {
             let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
-            let click_count = if action == "double_click" { 2 } else { 1 };
-            let btn = match action {
+            let _click_count = if action == "double_click" { 2 } else { 1 };
+            let _btn = match action {
                 "right_click" => "Right", "middle_click" => "Middle", _ => "Left",
             };
             format!(
@@ -1876,7 +1878,7 @@ fn computer_action_windows(
         }
         "scroll" => {
             let amt = amount.unwrap_or(3) as i64;
-            let dir_sign = match direction.unwrap_or("down") {
+            let _dir_sign = match direction.unwrap_or("down") {
                 "up" => 120, "down" => -120, "left" => -120, "right" => 120,
                 _ => -120,
             };

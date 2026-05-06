@@ -16,6 +16,7 @@ pub struct LlmResponse {
     pub tool_calls: Vec<ToolCall>,
     pub raw: String,
     pub stop_reason: String,
+    pub usage: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]

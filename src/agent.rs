@@ -199,6 +199,7 @@ fn parse_text_response(raw_text: &str) -> LlmResponse {
         tool_calls,
         raw: raw_text.to_string(),
         stop_reason,
+        usage: None,
     }
 }
 
@@ -1946,6 +1947,7 @@ mod tests {
                 tool_calls: Vec::new(),
                 raw: "Hello!".to_string(),
                 stop_reason: "end_turn".to_string(),
+                usage: None,
             },
             chunk: "Hello!".to_string(),
         }));

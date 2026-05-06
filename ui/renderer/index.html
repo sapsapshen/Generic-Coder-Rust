@@ -34,7 +34,7 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <!-- Sessions -->
-      <div class="sidebar-section">
+      <div class="sidebar-section sidebar-section--sessions">
         <div class="sidebar-header">
           <span class="sidebar-label">SESSIONS</span>
           <button class="sidebar-action" id="btn-new-session" title="New Session">+</button>
@@ -46,27 +46,23 @@
       <div class="sidebar-section">
         <div class="sidebar-header">
           <span class="sidebar-label">WORKFLOW</span>
+          <button class="sidebar-action" id="btn-reset-workflow" title="Reset workflow">&#x21bb;</button>
         </div>
         <div class="workflow-pipeline" id="workflow-pipeline">
-          <div class="workflow-node active" data-mode="work">
-            <svg class="workflow-node__icon workflow-node__icon--filled" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-              <path d="M5.5 4.5 14.75 10 5.5 15.5Z" fill="currentColor"/>
-            </svg>
-            <span class="workflow-node__label">Work</span>
+          <div class="empty-state">Drag roles below<br>to build a pipeline</div>
+        </div>
+        <div class="workflow-palette" id="workflow-palette">
+          <div class="workflow-role-chip" draggable="true" data-mode="work" data-label="Work">
+            <span class="workflow-role-chip__color" style="background:var(--role-coder)">&nbsp;</span>
+            <span class="workflow-role-chip__label">Work</span>
           </div>
-          <div class="workflow-connector"></div>
-          <div class="workflow-node" data-mode="plan">
-            <svg class="workflow-node__icon workflow-node__icon--filled" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-              <path d="M10 3.25 16.75 10 10 16.75 3.25 10Z" fill="currentColor"/>
-            </svg>
-            <span class="workflow-node__label">Plan</span>
+          <div class="workflow-role-chip" draggable="true" data-mode="plan" data-label="Plan">
+            <span class="workflow-role-chip__color" style="background:var(--role-planner)">&nbsp;</span>
+            <span class="workflow-role-chip__label">Plan</span>
           </div>
-          <div class="workflow-connector"></div>
-          <div class="workflow-node" data-mode="review">
-            <svg class="workflow-node__icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-              <path d="M10 3.9 16.1 10 10 16.1 3.9 10Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/>
-            </svg>
-            <span class="workflow-node__label">Review</span>
+          <div class="workflow-role-chip" draggable="true" data-mode="review" data-label="Review">
+            <span class="workflow-role-chip__color" style="background:var(--role-reviewer)">&nbsp;</span>
+            <span class="workflow-role-chip__label">Review</span>
           </div>
         </div>
       </div>
@@ -96,7 +92,7 @@
       </div>
 
       <!-- Workspace Tree -->
-      <div class="sidebar-section sidebar-section--grow">
+      <div class="sidebar-section sidebar-section--workspace">
         <div class="sidebar-header">
           <span class="sidebar-label">WORKSPACE</span>
           <button class="sidebar-action" id="btn-refresh-workspace" title="Refresh">↻</button>
@@ -120,6 +116,22 @@
         <div class="status-row">
           <span class="status-label">Model</span>
           <span class="status-value" id="status-model">default</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Strength</span>
+          <select class="status-select" id="status-reasoning">
+            <option value="">Default</option>
+            <option value="minimal">Minimal</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="status-row">
+          <label class="toggle-row status-toggle">
+            <input type="checkbox" id="toggle-thinking">
+            <span class="toggle-row__label">Thinking</span>
+          </label>
         </div>
         <div class="status-row">
           <span class="status-label">Tokens</span>
@@ -255,6 +267,24 @@
               <label class="settings-field">
                 <span>Base URL</span>
                 <input id="base-url-input" class="settings-input" type="text" />
+              </label>
+              <label class="settings-field">
+                <span>Temperature</span>
+                <input id="temperature-input" class="settings-input" type="number" min="0" max="2" step="0.1" value="1.0" />
+              </label>
+              <label class="settings-field">
+                <span>Max Tokens</span>
+                <input id="max-tokens-input" class="settings-input" type="number" min="256" max="131072" step="256" value="8192" />
+              </label>
+              <label class="settings-field">
+                <span>Reasoning</span>
+                <select id="cfg-reasoning-effort" class="theme-select">
+                  <option value="">Default (auto)</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
               </label>
               <label class="settings-field settings-field--full">
                 <span>API Key</span>

@@ -135,8 +135,12 @@
     multiAgentEnabled: false,
     oneShotEnabled: false,
     workflowMode: 'work',
+    workflowNodes: [], // [{mode, label}] — drag-and-drop built pipeline
+    reasoningEffort: '',
+    thinkingEnabled: false,
     computerUseEnabled: true,
     sidebarVisible: true,
+    collapsedDirs: {},
     workspaceFiles: [],
     workspacePreviewPath: null,
     gitChanges: [],
@@ -182,6 +186,8 @@
     tbSession: $('#tb-session'),
     statusModel: $('#status-model'),
     statusTokens: $('#status-tokens'),
+    statusReasoning: $('#status-reasoning'),
+    toggleThinking: $('#toggle-thinking'),
     welcome: $('#chat-welcome'),
     chatContainer: $('#chat-container'),
     toolbarMode: $('#toolbar-mode'),
@@ -208,6 +214,9 @@
     apiKeyInput: $('#api-key-input'),
     apiKeyToggle: $('#api-key-toggle'),
     saveLlmButton: $('#save-llm-settings'),
+    temperatureInput: $('#temperature-input'),
+    maxTokensInput: $('#max-tokens-input'),
+    cfgReasoningEffort: $('#cfg-reasoning-effort'),
     // Settings — Appearance
     themeSelect: $('#theme-select'),
     cfgFontSize: $('#cfg-font-size'),
@@ -228,12 +237,14 @@
     changesList: $('#changes-list'),
     changesCount: $('#changes-count'),
     btnRefreshWorkspace: $('#btn-refresh-workspace'),
+    btnResetWorkflow: $('#btn-reset-workflow'),
     // Toggles
     toggleMultiAgent: $('#toggle-multi-agent'),
     toggleOneShot: $('#toggle-one-shot'),
     toggleComputerUse: $('#toggle-computer-use'),
     // Workflow
     workflowPipeline: $('#workflow-pipeline'),
+    workflowPalette: $('#workflow-palette'),
     // Toast
     toastContainer: $('#toast-container'),
     inputContext: $('#input-context'),
@@ -295,8 +306,14 @@
       if (saved.multiAgentEnabled !== undefined) state.multiAgentEnabled = saved.multiAgentEnabled;
       if (saved.oneShotEnabled !== undefined) state.oneShotEnabled = saved.oneShotEnabled;
       if (saved.computerUseEnabled !== undefined) state.computerUseEnabled = saved.computerUseEnabled;
+      if (saved.reasoningEffort) state.reasoningEffort = saved.reasoningEffort;
+      if (saved.thinkingEnabled !== undefined) state.thinkingEnabled = saved.thinkingEnabled;
       if (saved.workflowMode) state.workflowMode = saved.workflowMode;
+      if (saved.workflowNodes) state.workflowNodes = saved.workflowNodes;
       if (saved.sidebarVisible !== undefined) state.sidebarVisible = saved.sidebarVisible;
+      if (saved.collapsedDirs && typeof saved.collapsedDirs === 'object') {
+        state.collapsedDirs = saved.collapsedDirs;
+      }
       // Restore LLM form (the full model configuration)
       if (saved.llmForm) {
         state.llmForm = { ...state.llmForm, ...saved.llmForm };
@@ -318,8 +335,12 @@
       multiAgentEnabled: state.multiAgentEnabled,
       oneShotEnabled: state.oneShotEnabled,
       computerUseEnabled: state.computerUseEnabled,
+      reasoningEffort: state.reasoningEffort,
+      thinkingEnabled: state.thinkingEnabled,
       workflowMode: state.workflowMode,
+      workflowNodes: state.workflowNodes,
       sidebarVisible: state.sidebarVisible,
+      collapsedDirs: state.collapsedDirs,
       llmForm: state.llmForm,
     }));
   }
@@ -334,6 +355,8 @@
     dom.toggleMultiAgent.checked = state.multiAgentEnabled;
     dom.toggleOneShot.checked = state.oneShotEnabled;
     if (dom.toggleComputerUse) dom.toggleComputerUse.checked = state.computerUseEnabled;
+    if (dom.statusReasoning) dom.statusReasoning.value = state.reasoningEffort || '';
+    if (dom.toggleThinking) dom.toggleThinking.checked = state.thinkingEnabled;
     dom.toolbarMode.textContent = state.workflowMode.charAt(0).toUpperCase() + state.workflowMode.slice(1);
 
     updateSidebarVisibility();
@@ -393,6 +416,9 @@
     if (dom.apiKeyInput) dom.apiKeyInput.addEventListener('input', () => { state.llmForm.apikey = dom.apiKeyInput.value; });
     if (dom.apiKeyToggle) dom.apiKeyToggle.addEventListener('click', toggleApiKey);
     if (dom.saveLlmButton) dom.saveLlmButton.addEventListener('click', saveLlmConfig);
+    if (dom.temperatureInput) dom.temperatureInput.addEventListener('input', () => { state.llmForm.temperature = parseFloat(dom.temperatureInput.value) || 1.0; });
+    if (dom.maxTokensInput) dom.maxTokensInput.addEventListener('input', () => { state.llmForm.max_tokens = parseInt(dom.maxTokensInput.value, 10) || 8192; });
+    if (dom.cfgReasoningEffort) dom.cfgReasoningEffort.addEventListener('change', () => { state.llmForm.reasoning_effort = dom.cfgReasoningEffort.value || null; });
 
     // Settings — Appearance
     if (dom.themeSelect) {
@@ -420,15 +446,16 @@
     dom.toggleMultiAgent.addEventListener('change', () => toggleMultiAgent());
     dom.toggleOneShot.addEventListener('change', () => toggleOneShot());
     if (dom.toggleComputerUse) dom.toggleComputerUse.addEventListener('change', () => toggleComputerUse());
+    if (dom.statusReasoning) dom.statusReasoning.addEventListener('change', () => setReasoningEffort());
+    if (dom.toggleThinking) dom.toggleThinking.addEventListener('change', () => toggleThinking());
 
-    // Workflow
-    $$('.workflow-node').forEach(n => {
-      n.addEventListener('click', () => setWorkflowMode(n.dataset.mode));
-    });
+    // Workflow — drag & drop
+    setupWorkflowDragDrop();
 
     // Sidebar
     dom.btnToggleSidebar.addEventListener('click', toggleSidebar);
     dom.btnRefreshWorkspace.addEventListener('click', refreshWorkspace);
+    dom.btnResetWorkflow.addEventListener('click', resetWorkflow);
     dom.workspaceTree.addEventListener('click', handleWorkspaceTreeClick);
     dom.messages.addEventListener('click', handleMessageActionsClick);
 
@@ -494,6 +521,9 @@
     if (dom.protocolPresetSelect) dom.protocolPresetSelect.value = state.llmForm.protocol_preset || 'custom';
     if (dom.apiKeyToggle) dom.apiKeyToggle.textContent = 'Show';
     if (dom.apiKeyInput) dom.apiKeyInput.type = 'password';
+    if (dom.temperatureInput) dom.temperatureInput.value = state.llmForm.temperature || 1.0;
+    if (dom.maxTokensInput) dom.maxTokensInput.value = state.llmForm.max_tokens || 8192;
+    if (dom.cfgReasoningEffort) dom.cfgReasoningEffort.value = state.llmForm.reasoning_effort || '';
   }
 
   // ── Model Preset Logic ───────────────────────────────────────
@@ -551,6 +581,9 @@
       model: dom.modelNameInput ? dom.modelNameInput.value.trim() : '',
       apibase: dom.baseUrlInput ? dom.baseUrlInput.value.trim() : '',
       apikey: dom.apiKeyInput ? dom.apiKeyInput.value.trim() : '',
+      temperature: dom.temperatureInput ? parseFloat(dom.temperatureInput.value) || 1.0 : 1.0,
+      max_tokens: dom.maxTokensInput ? parseInt(dom.maxTokensInput.value, 10) || 8192 : 8192,
+      reasoning_effort: dom.cfgReasoningEffort ? dom.cfgReasoningEffort.value || null : null,
     };
 
     try {
@@ -775,6 +808,10 @@
 
         scrollToBottom();
 
+        if (data.usage) {
+          dom.statusTokens.textContent = formatTokenUsage(data.usage);
+        }
+
         if (data.done) {
           const finalText = data.final || data.preview || '';
           if (lastIdx >= 0 && state.messages[lastIdx].role === 'assistant') {
@@ -896,9 +933,22 @@
       el.innerHTML = `
         <span class="session-item-name">${escHtml(s.name)}</span>
         <span class="session-item-count">${s.messages ? s.messages.length : 0}</span>
+        <button class="session-item-delete" data-session-id="${escAttr(s.id)}" title="Delete session">&times;</button>
       `;
-      el.addEventListener('click', () => switchSession(s.id));
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.session-item-delete')) return;
+        switchSession(s.id);
+      });
       dom.sessionList.appendChild(el);
+    });
+
+    // Attach delete handlers
+    dom.sessionList.querySelectorAll('.session-item-delete').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sessionId = btn.dataset.sessionId;
+        deleteSession(sessionId);
+      });
     });
   }
 
@@ -915,6 +965,41 @@
     renderSessions();
     renderAllMessages();
     dom.tbSession.textContent = '\u2014 ' + session.name + ' \u2014';
+  }
+
+  function deleteSession(id) {
+    if (state.isStreaming) return;
+    const idx = state.sessions.findIndex((s) => s.id === id);
+    if (idx === -1) return;
+
+    const session = state.sessions[idx];
+    const name = session.name || 'Session';
+    if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+
+    // Remove from array
+    state.sessions.splice(idx, 1);
+
+    // If we deleted the active session, switch to another or create new
+    if (state.activeSessionId === id) {
+      if (state.sessions.length > 0) {
+        state.activeSessionId = state.sessions[0].id;
+        state.messages = Array.isArray(state.sessions[0].messages)
+          ? state.sessions[0].messages.map((msg) => ensurePreviewMessageId(msg))
+          : [];
+        state.sessions[0].messages = state.messages;
+        dom.tbSession.textContent = '\u2014 ' + state.sessions[0].name + ' \u2014';
+        renderAllMessages();
+      } else {
+        state.activeSessionId = null;
+        state.messages = [];
+        dom.tbSession.textContent = '\u2014 new session \u2014';
+        resetChat();
+      }
+    }
+
+    saveSettings();
+    renderSessions();
+    toast('Deleted: ' + name, 'info');
   }
 
   function ensureActiveSession() {
@@ -1175,11 +1260,12 @@
   function renderMessage(msg, isStreaming) {
     const el = document.createElement('div');
     el.className = 'message';
+    el.dataset.role = msg.role || 'system';
     if (msg.id) el.dataset.messageId = msg.id;
 
     let header = '';
     if (msg.role === 'user') {
-      header = `<div class="message-header"><span class="message-role user">YOU</span><span class="message-time">${formatTime(msg.timestamp)}</span></div>`;
+      header = `<div class="message-header"><span class="message-time">${formatTime(msg.timestamp)}</span><span class="message-role user">YOU</span></div>`;
     } else if (msg.role === 'assistant') {
       header = `<div class="message-header"><span class="message-role assistant">CODER</span><span class="message-time">${formatTime(msg.timestamp)}</span></div>`;
     } else if (msg.role === 'system') {
@@ -1580,11 +1666,160 @@
   function setWorkflowMode(mode) {
     state.workflowMode = mode;
     dom.toolbarMode.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
-    $$('.workflow-node').forEach(n => {
-      n.classList.toggle('active', n.dataset.mode === mode);
-    });
     saveSettings();
     sendConfig({ mode });
+  }
+
+  // ── Workflow Drag & Drop ────────────────────────────────────
+  function renderWorkflowPipeline() {
+    const nodes = state.workflowNodes;
+    if (nodes.length === 0) {
+      dom.workflowPipeline.innerHTML = '<div class="empty-state">Drag roles below<br>to build a pipeline</div>';
+      return;
+    }
+    dom.workflowPipeline.innerHTML = nodes.map((n, i) => {
+      const cls = [
+        'workflow-node',
+        n.mode === state.workflowMode && !n.completed ? 'active' : '',
+        n.completed ? 'completed' : '',
+      ].filter(Boolean).join(' ');
+
+      return '<div class="workflow-connector" style="' + (i === 0 ? 'display:none' : '') + '"></div>'
+        + '<div class="' + cls + '" data-index="' + i + '" data-mode="' + escAttr(n.mode) + '">'
+        + '<span class="workflow-node__label">' + escHtml(n.label || n.mode) + '</span>'
+        + '<button class="workflow-node__remove" data-remove="' + i + '" title="Remove">&times;</button>'
+        + '</div>';
+    }).join('');
+
+    // Click on pipeline nodes to select mode
+    dom.workflowPipeline.querySelectorAll('.workflow-node').forEach(wn => {
+      wn.addEventListener('click', function(e) {
+        if (e.target.closest('.workflow-node__remove')) return;
+        const mode = this.dataset.mode;
+        if (mode) {
+          setWorkflowMode(mode);
+          renderWorkflowPipeline();
+        }
+      });
+    });
+
+    // Remove buttons
+    dom.workflowPipeline.querySelectorAll('.workflow-node__remove').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const idx = parseInt(this.dataset.remove, 10);
+        state.workflowNodes.splice(idx, 1);
+        saveWorkflowToServer();
+        renderWorkflowPipeline();
+      });
+    });
+  }
+
+  function saveWorkflowToServer() {
+    fetch(state.serverUrl + '/api/workflow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodes: state.workflowNodes }),
+    }).catch(() => {});
+    saveSettings();
+  }
+
+  function resetWorkflow() {
+    state.workflowNodes = [];
+    fetch(state.serverUrl + '/api/workflow/reset', { method: 'POST' }).catch(() => {});
+    renderWorkflowPipeline();
+    saveSettings();
+    toast('Workflow reset', 'info');
+  }
+
+  function setupWorkflowDragDrop() {
+    const pipeline = dom.workflowPipeline;
+    const palette = dom.workflowPalette;
+
+    // ── Drag from palette ─────────────────────────────────
+    Array.from(palette.querySelectorAll('.workflow-role-chip[data-mode]')).forEach(chip => {
+      chip.addEventListener('dragstart', function(e) {
+        e.dataTransfer.setData('text/plain', JSON.stringify({
+          mode: this.dataset.mode,
+          label: this.dataset.label || this.dataset.mode,
+        }));
+        e.dataTransfer.effectAllowed = 'copy';
+        this.classList.add('dragging');
+      });
+      chip.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+      });
+    });
+
+    // ── Drop into pipeline ─────────────────────────────────
+    pipeline.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      this.classList.add('drag-over');
+    });
+
+    pipeline.addEventListener('dragleave', function() {
+      this.classList.remove('drag-over');
+    });
+
+    pipeline.addEventListener('drop', function(e) {
+      e.preventDefault();
+      this.classList.remove('drag-over');
+
+      // Handle reorder (moving existing nodes within pipeline)
+      const reorderIdx = e.dataTransfer.getData('text/reorder');
+      if (reorderIdx !== undefined && reorderIdx !== '') {
+        const from = parseInt(reorderIdx, 10);
+        const to = getDropIndex(e);
+        if (!isNaN(from) && !isNaN(to) && from !== to) {
+          const [moved] = state.workflowNodes.splice(from, 1);
+          state.workflowNodes.splice(to, 0, moved);
+          saveWorkflowToServer();
+          renderWorkflowPipeline();
+          return;
+        }
+        return;
+      }
+
+      // Handle new node from palette
+      try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if (data.mode) {
+          state.workflowNodes.push({ mode: data.mode, label: data.label });
+          saveWorkflowToServer();
+          renderWorkflowPipeline();
+        }
+      } catch (_) {}
+    });
+
+    // Helper: find drop index based on cursor position among pipeline nodes
+    function getDropIndex(e) {
+      const nodes = Array.from(pipeline.querySelectorAll('.workflow-node'));
+      for (let i = 0; i < nodes.length; i++) {
+        const rect = nodes[i].getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) return i;
+      }
+      return nodes.length;
+    }
+
+    // ── Drag to reorder pipeline nodes ─────────────────────
+    pipeline.addEventListener('dragstart', function(e) {
+      const nodeEl = e.target.closest('.workflow-node');
+      if (!nodeEl) return;
+      const idx = parseInt(nodeEl.dataset.index, 10);
+      if (isNaN(idx)) return;
+      e.dataTransfer.setData('text/reorder', String(idx));
+      e.dataTransfer.effectAllowed = 'move';
+      nodeEl.classList.add('drag-ghost');
+    });
+
+    pipeline.addEventListener('dragend', function(e) {
+      const nodeEl = e.target.closest('.workflow-node');
+      if (nodeEl) nodeEl.classList.remove('drag-ghost');
+    });
+
+    // Initial render
+    renderWorkflowPipeline();
   }
 
   // ── Toggles ──────────────────────────────────────────────────
@@ -1615,6 +1850,18 @@
   async function toggleComputerUse() {
     state.computerUseEnabled = dom.toggleComputerUse.checked;
     sendConfig({ computer_use_enabled: state.computerUseEnabled });
+    saveSettings();
+  }
+
+  function setReasoningEffort() {
+    state.reasoningEffort = dom.statusReasoning.value;
+    sendConfig({ reasoning_effort: state.reasoningEffort || null });
+    saveSettings();
+  }
+
+  function toggleThinking() {
+    state.thinkingEnabled = dom.toggleThinking.checked;
+    sendConfig({ thinking_enabled: state.thinkingEnabled });
     saveSettings();
   }
 
@@ -1652,6 +1899,7 @@
       if (treeResp.ok) {
         const treeData = await treeResp.json();
         state.workspaceFiles = treeData.tree || [];
+        primeCollapsedDirs();
       }
       const changesResp = await fetch(state.serverUrl + '/api/changes');
       if (changesResp.ok) {
@@ -1671,10 +1919,18 @@
   async function handleWorkspaceTreeClick(event) {
     const entry = event.target.closest('.ws-entry');
     if (!entry || !dom.workspaceTree.contains(entry)) return;
-    if (entry.dataset.type !== 'file') return;
 
     const filePath = entry.dataset.path;
     if (!filePath) return;
+
+    if (entry.dataset.type === 'dir') {
+      // Toggle collapse for directory
+      const key = filePath || entry.querySelector('.ws-entry__name')?.textContent || '';
+      state.collapsedDirs[key] = !isWorkspaceDirCollapsed(key);
+      saveSettings();
+      renderWorkspaceTree();
+      return;
+    }
 
     state.workspacePreviewPath = filePath;
     renderWorkspaceTree();
@@ -1715,25 +1971,79 @@
     }
   }
 
+  function primeCollapsedDirs() {
+    const nextCollapsedDirs = { ...state.collapsedDirs };
+    for (const entry of state.workspaceFiles) {
+      if (entry && entry.type === 'dir') {
+        const key = entry.path || entry.name;
+        if (key && nextCollapsedDirs[key] === undefined) {
+          nextCollapsedDirs[key] = true;
+        }
+      }
+    }
+    state.collapsedDirs = nextCollapsedDirs;
+  }
+
+  function isWorkspaceDirCollapsed(key) {
+    return state.collapsedDirs[key] !== false;
+  }
+
   function renderWorkspaceTree() {
     if (state.workspaceFiles.length === 0) {
       dom.workspaceTree.innerHTML = '<div class="empty-state">No workspace loaded</div>';
       return;
     }
-    dom.workspaceTree.innerHTML = state.workspaceFiles.map(f => {
-      const isDir = f.type === 'dir';
+
+    // Build structured tree from flat rows
+    const roots = [];
+    const stack = []; // depth-indexed stack of parent nodes
+    for (const f of state.workspaceFiles) {
+      const node = { ...f, children: [], id: f.path || f.name };
+      while (stack.length > f.depth) stack.pop();
+      if (stack.length === 0 || f.depth === 0) {
+        roots.push(node);
+      } else {
+        const parent = stack[stack.length - 1];
+        parent.children.push(node);
+      }
+      if (f.type === 'dir') {
+        stack.push(node);
+      }
+    }
+
+    function renderNode(node, depth) {
+      const isDir = node.type === 'dir';
+      const collapsed = isDir && isWorkspaceDirCollapsed(node.path || node.name);
+      const indent = depth * 12;
       let iconClass = 'file';
-      if (isDir) iconClass = 'dir';
-      else if (f.name && (f.name.endsWith('.rs') || f.name.endsWith('.go') || f.name.endsWith('.ts'))) iconClass += ' rs';
-      else if (f.name && f.name.endsWith('.md')) iconClass += ' md';
-      const icon = isDir ? '\u25B8' : '\u2014';
-      const indent = (f.depth || 0) * 12;
-      const isActive = !isDir && state.workspacePreviewPath === (f.path || '');
-      return '<div class="ws-entry' + (isActive ? ' is-active' : '') + '" style="padding-left:' + (14 + indent) + 'px" data-path="' + escAttr(f.path || '') + '" data-type="' + escAttr(f.type || '') + '">'
+      if (isDir) {
+        iconClass = 'dir';
+      } else if (node.name && (node.name.endsWith('.rs') || node.name.endsWith('.go') || node.name.endsWith('.ts'))) {
+        iconClass += ' rs';
+      } else if (node.name && node.name.endsWith('.md')) {
+        iconClass += ' md';
+      }
+      const icon = isDir ? (collapsed ? '\u25B8' : '\u25BE') : '\u2014';
+      const isActive = !isDir && state.workspacePreviewPath === (node.path || '');
+      const dirCls = isDir ? ' ws-entry--dir' : '';
+      const collapsedCls = collapsed ? ' ws-entry--collapsed' : '';
+
+      let html = '<div class="ws-entry' + (isActive ? ' is-active' : '') + dirCls + collapsedCls
+        + '" style="padding-left:' + (14 + indent) + 'px" data-path="' + escAttr(node.path || '')
+        + '" data-type="' + escAttr(node.type || '') + '">'
         + '<span class="ws-entry__icon ' + iconClass + '">' + icon + '</span>'
-        + '<span class="ws-entry__name">' + escHtml(f.name || '') + '</span>'
+        + '<span class="ws-entry__name">' + escHtml(node.name || '') + '</span>'
         + '</div>';
-    }).join('');
+
+      if (isDir && !collapsed && node.children.length > 0) {
+        for (const child of node.children) {
+          html += renderNode(child, depth + 1);
+        }
+      }
+      return html;
+    }
+
+    dom.workspaceTree.innerHTML = roots.map(r => renderNode(r, 0)).join('');
   }
 
   function renderGitChanges() {
