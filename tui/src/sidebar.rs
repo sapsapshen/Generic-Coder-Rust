@@ -29,7 +29,8 @@ pub fn draw(
     let sections = Layout::vertical([
         Constraint::Length(3),  // Brand
         Constraint::Length(6),  // Modes
-        Constraint::Length(4),  // Context
+        Constraint::Length(5),  // Context
+        Constraint::Length(6),  // Inference
         Constraint::Min(0),     // Workspace tree
         Constraint::Length(3),  // Status
     ])
@@ -96,7 +97,7 @@ pub fn draw(
     // ── Context ───────────────────────────────────────
     let ctx_chunks = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(3),
+        Constraint::Length(4),
     ])
     .split(sections[2]);
 
@@ -114,11 +115,57 @@ pub fn draw(
         Line::from(Span::styled(format!("  Mode:   {mode_label}"), Style::default().fg(text))),
         Line::from(Span::styled(format!("  Model:  {}", app.model_label), Style::default().fg(text_dim))),
         Line::from(Span::styled(
+            format!("  Auto:   {}", if app.auto_model_enabled { "ON" } else { "OFF" }),
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            format!("  Sess:   {}", app.active_session_index.map(|index| format!("#{index}")).unwrap_or_else(|| "new".into())),
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
             format!("  Turns:  {} max", mode_label_turns(app)),
             Style::default().fg(text_dim),
         )),
     ];
     frame.render_widget(Paragraph::new(ctx_text), ctx_chunks[1]);
+
+    // ── Inference panel ───────────────────────────────
+    let inference_chunks = Layout::vertical([Constraint::Length(1), Constraint::Length(5)]).split(sections[3]);
+    frame.render_widget(
+        Paragraph::new("INFERENCE").style(Style::default().fg(text_dim).add_modifier(Modifier::BOLD)),
+        inference_chunks[0],
+    );
+    let cached = app.session_usage.cached_tokens;
+    let prompt = app.session_usage.prompt_tokens;
+    let hit_rate = if prompt == 0 {
+        0
+    } else {
+        ((cached as f64 / prompt as f64) * 100.0).round() as u64
+    };
+    let last_turn = app
+        .last_usage
+        .map(|(prompt_tokens, completion_tokens, cached_tokens)| format!("↑{prompt_tokens} ↓{completion_tokens} 💾{cached_tokens}"))
+        .unwrap_or_else(|| "no completed turn".into());
+    let inference_text = vec![
+        Line::from(Span::styled(last_turn, Style::default().fg(text))),
+        Line::from(Span::styled(
+            format!("  Session: ↑{} ↓{}", prompt, app.session_usage.completion_tokens),
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            format!("  Cache:   {}% hit", hit_rate),
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            format!("  Turns:   {}", app.session_usage.turns),
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            format!("  Points:  {}", app.sessions.iter().find(|session| Some(session.index) == app.active_session_index).map(|session| session.checkpoint_count).unwrap_or(0)),
+            Style::default().fg(text_dim),
+        )),
+    ];
+    frame.render_widget(Paragraph::new(inference_text), inference_chunks[1]);
 
     // ── Workspace tree ────────────────────────────────
     let tree_block = Block::default()
@@ -126,8 +173,8 @@ pub fn draw(
         .title_alignment(Alignment::Left)
         .borders(Borders::TOP)
         .border_style(Style::default().fg(border_color));
-    let tree_inner = tree_block.inner(sections[3]);
-    frame.render_widget(tree_block, sections[3]);
+    let tree_inner = tree_block.inner(sections[4]);
+    frame.render_widget(tree_block, sections[4]);
 
     if app.workspace_tree.is_empty() {
         frame.render_widget(
@@ -166,10 +213,18 @@ pub fn draw(
     } else {
         "○ Idle"
     };
-    frame.render_widget(
-        Paragraph::new(Span::styled(status_text, Style::default().fg(status_color))),
-        sections[4],
-    );
+    let status_lines = if let Some(route) = &app.auto_route {
+        vec![
+            Line::from(Span::styled(status_text, Style::default().fg(status_color))),
+            Line::from(Span::styled(
+                format!("→ {} / {}", route.model, route.reasoning_effort.as_deref().unwrap_or("default")),
+                Style::default().fg(text_dim),
+            )),
+        ]
+    } else {
+        vec![Line::from(Span::styled(status_text, Style::default().fg(status_color)))]
+    };
+    frame.render_widget(Paragraph::new(status_lines), sections[5]);
 }
 
 fn mode_label_turns(app: &App) -> &'static str {

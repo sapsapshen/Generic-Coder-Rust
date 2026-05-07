@@ -71,6 +71,143 @@
     "parameters": {"type": "object", "properties": {}}}
   },
   {"type": "function", "function": {
+    "name": "workspace_open",
+    "description": "打开本地目录并设为当前活动 workspace。用于浏览项目结构和切换代码库。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "要打开的绝对路径。"},
+      "name": {"type": "string", "description": "可选名称，不传则自动生成。"}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "workspace_list",
+    "description": "列出 workspace 或指定目录下的文件和文件夹，可按 glob 过滤。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "要列出的目录，默认当前活动 workspace。"},
+      "pattern": {"type": "string", "description": "glob 过滤，例如 *.rs 或 **/*.md。"}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "workspace_search",
+    "description": "按文件名在 workspace 内搜索文件。",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "文件名搜索关键词。"},
+      "path": {"type": "string", "description": "搜索目录，默认当前活动 workspace。"},
+      "max_results": {"type": "integer", "description": "最大返回数量。", "default": 50}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "file_search",
+    "description": "兼容旧工具名，等价于 workspace_search。按文件名搜索文件。",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "文件名搜索关键词。"},
+      "path": {"type": "string", "description": "搜索目录，默认当前活动 workspace。"},
+      "max_results": {"type": "integer", "description": "最大返回数量。", "default": 50}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "content_search",
+    "description": "按正则搜索文件内容，适合查函数定义、调用点和 TODO。",
+    "parameters": {"type": "object", "properties": {
+      "pattern": {"type": "string", "description": "要搜索的正则。"},
+      "path": {"type": "string", "description": "搜索目录或文件，默认 workspace 根。"},
+      "glob": {"type": "string", "description": "文件 glob 过滤，例如 *.py 或 **/*.rs。"},
+      "context_lines": {"type": "integer", "description": "命中前后保留的上下文行数。", "default": 2},
+      "max_results": {"type": "integer", "description": "最大返回条数。", "default": 50},
+      "case_sensitive": {"type": "boolean", "description": "是否区分大小写。", "default": true}},
+      "required": ["pattern"]}}},
+  {"type": "function", "function": {
+    "name": "web_search",
+    "description": "搜索公开网页并返回结构化标题、链接和摘要。",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "搜索关键词。"},
+      "max_results": {"type": "integer", "description": "最大返回数量。", "default": 5}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "web_fetch",
+    "description": "按 URL 抓取网页或文本资源，并返回规整后的正文内容。",
+    "parameters": {"type": "object", "properties": {
+      "url": {"type": "string", "description": "要抓取的绝对 URL。"},
+      "max_chars": {"type": "integer", "description": "正文最大返回字符数。", "default": 12000}},
+      "required": ["url"]}}},
+  {"type": "function", "function": {
+    "name": "remote_connect",
+    "description": "通过 SSH 连接远程主机。供 remote_exec / remote_file_read / remote_file_write / remote_list_dir 使用。",
+    "parameters": {"type": "object", "properties": {
+      "name": {"type": "string", "description": "连接名称，可选。"},
+      "host": {"type": "string", "description": "远程主机名或 IP。"},
+      "port": {"type": "integer", "description": "SSH 端口，默认 22。", "default": 22},
+      "username": {"type": "string", "description": "SSH 用户名。", "default": "root"},
+      "password": {"type": "string", "description": "SSH 密码，优先建议用 key_path。"},
+      "key_path": {"type": "string", "description": "SSH 私钥路径。"}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "remote_exec",
+    "description": "在已连接的远程主机上执行命令。",
+    "parameters": {"type": "object", "properties": {
+      "command": {"type": "string", "description": "要执行的命令。"},
+      "server": {"type": "string", "description": "服务器名称，不传则使用第一个活动连接。"},
+      "timeout": {"type": "integer", "description": "超时秒数。", "default": 60},
+      "cwd": {"type": "string", "description": "远程工作目录。"}},
+      "required": ["command"]}}},
+  {"type": "function", "function": {
+    "name": "remote_file_read",
+    "description": "读取远程主机上的文件。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "远程文件绝对路径。"},
+      "server": {"type": "string", "description": "服务器名称，不传则使用第一个活动连接。"}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "remote_file_write",
+    "description": "写入内容到远程主机上的文件。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "远程文件绝对路径。"},
+      "content": {"type": "string", "description": "写入内容。"},
+      "server": {"type": "string", "description": "服务器名称，不传则使用第一个活动连接。"}},
+      "required": ["path", "content"]}}},
+  {"type": "function", "function": {
+    "name": "remote_list_dir",
+    "description": "列出远程目录内容。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "远程目录路径。", "default": "."},
+      "server": {"type": "string", "description": "服务器名称，不传则使用第一个活动连接。"}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "git_status",
+    "description": "查看 git 工作区状态。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "仓库路径，默认 workspace 根或当前目录。"}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "git_diff",
+    "description": "查看 git diff。",
+    "parameters": {"type": "object", "properties": {
+      "staged": {"type": "boolean", "description": "是否查看 staged diff。", "default": false},
+      "path": {"type": "string", "description": "可选文件或目录路径。"},
+      "path_repo": {"type": "string", "description": "仓库路径，默认 workspace 根或当前目录。"}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "git_log",
+    "description": "查看最近提交历史。",
+    "parameters": {"type": "object", "properties": {
+      "count": {"type": "integer", "description": "最近提交数量。", "default": 10},
+      "path_repo": {"type": "string", "description": "仓库路径，默认 workspace 根或当前目录。"}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "file_revert",
+    "description": "把文件恢复到最近一次自动备份版本。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "要恢复的文件路径。"}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "media_info",
+    "description": "读取媒体文件信息，包括类型、大小、尺寸、时长、页数等。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "媒体文件路径。"}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
+    "name": "media_extract",
+    "description": "从媒体文件中提取文本、预览或元数据。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "媒体文件路径。"},
+      "type": {"type": "string", "enum": ["text", "preview", "info"], "description": "text=正文, preview=预览, info=元数据", "default": "text"}},
+      "required": ["path"]}}},
+  {"type": "function", "function": {
     "name": "computer_screenshot",
     "description": "截取用户当前屏幕。返回 base64 PNG 和屏幕尺寸。执行鼠标点击、输入、滚动前应先调用，确保看到的是前台真实界面。",
     "parameters": {"type": "object", "properties": {

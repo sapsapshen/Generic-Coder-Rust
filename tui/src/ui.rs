@@ -145,6 +145,21 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 /// Render chat messages in reverse chronological order (newest first up top)
+fn push_wrapped_line(lines: &mut Vec<Line<'static>>, text: &str, max_w: usize, style: Style) {
+    if max_w == 0 {
+        lines.push(Line::from(Span::styled(text.to_string(), style)));
+        return;
+    }
+    if text.len() > max_w {
+        for chunk in text.chars().collect::<Vec<char>>().chunks(max_w) {
+            let s: String = chunk.iter().collect();
+            lines.push(Line::from(Span::styled(s, style)));
+        }
+    } else {
+        lines.push(Line::from(Span::styled(text.to_string(), style)));
+    }
+}
+
 fn render_messages(
     frame: &mut Frame,
     area: Rect,
@@ -186,6 +201,18 @@ fn render_messages(
             )),
             Line::from(Span::styled(
                 "║  F5        Toggle One Shot               ║",
+                Style::default().fg(text_dim),
+            )),
+            Line::from(Span::styled(
+                "║  F6        Toggle YOLO mode ⚡           ║",
+                Style::default().fg(text_dim),
+            )),
+            Line::from(Span::styled(
+                "║  F7        Toggle Auto model routing    ║",
+                Style::default().fg(text_dim),
+            )),
+            Line::from(Span::styled(
+                "║  Shift+Tab Cycle reasoning effort        ║",
                 Style::default().fg(text_dim),
             )),
             Line::from(Span::styled(
@@ -246,7 +273,7 @@ fn render_messages(
                         lines.push(Line::from(vec![
                             Span::styled("│ ", Style::default().fg(text_dim)),
                             Span::styled(format!("[{}] ", role.to_uppercase()), Style::default().fg(accent).add_modifier(Modifier::BOLD)),
-                            Span::styled(desc, Style::default().fg(text)),
+                            Span::styled(desc.to_string(), Style::default().fg(text)),
                         ]));
                     }
                     lines.push(Line::from(Span::styled(
@@ -269,18 +296,47 @@ fn render_messages(
             }
         }
 
-        // Message content
+        // Message content: detect and render <thinking>...</thinking> blocks
         let content = &msg.content;
-        for line in content.lines() {
-            // Truncate long lines
-            let max_w = area.width.saturating_sub(4) as usize;
-            if line.len() > max_w {
-                for chunk in line.chars().collect::<Vec<char>>().chunks(max_w) {
-                    let s: String = chunk.iter().collect();
-                    lines.push(Line::from(Span::styled(s, Style::default().fg(text))));
+        let max_w = area.width.saturating_sub(4) as usize;
+        let thinking_re_str = "<thinking>";
+        let mut remaining = content.as_str();
+        while !remaining.is_empty() {
+            if let Some(think_start) = remaining.find(thinking_re_str) {
+                // Render text before <thinking>
+                let before = &remaining[..think_start];
+                for line in before.lines() {
+                    push_wrapped_line(&mut lines, line, max_w, Style::default().fg(text));
+                }
+                remaining = &remaining[think_start + "<thinking>".len()..];
+                if let Some(think_end) = remaining.find("</thinking>") {
+                    // Render thinking block header
+                    lines.push(Line::from(vec![
+                        Span::styled("💭 Reasoning: ", Style::default().fg(Color::Rgb(180, 150, 60)).add_modifier(Modifier::ITALIC)),
+                    ]));
+                    let think_content = &remaining[..think_end];
+                    for line in think_content.lines() {
+                        push_wrapped_line(&mut lines, line, max_w.saturating_sub(2), 
+                            Style::default().fg(Color::Rgb(120, 120, 100)).add_modifier(Modifier::ITALIC));
+                    }
+                    lines.push(Line::from(Span::styled(
+                        "   ─ end reasoning ─",
+                        Style::default().fg(Color::Rgb(100, 100, 80)),
+                    )));
+                    remaining = &remaining[think_end + "</thinking>".len()..];
+                } else {
+                    // Unclosed thinking block (streaming) — render as dim
+                    for line in remaining.lines() {
+                        push_wrapped_line(&mut lines, line, max_w.saturating_sub(2),
+                            Style::default().fg(Color::Rgb(120, 120, 100)).add_modifier(Modifier::ITALIC));
+                    }
+                    remaining = "";
                 }
             } else {
-                lines.push(Line::from(Span::styled(line, Style::default().fg(text))));
+                for line in remaining.lines() {
+                    push_wrapped_line(&mut lines, line, max_w, Style::default().fg(text));
+                }
+                remaining = "";
             }
         }
         lines.push(Line::from(Span::styled(
@@ -496,7 +552,7 @@ fn render_sessions_dialog(
     text_dim: Color,
     _ok: Color,
 ) {
-    let popup_area = centered_rect(area, 60, 50);
+    let popup_area = centered_rect(area, 68, 58);
     frame.render_widget(Clear, popup_area);
 
     let block = Block::default()
@@ -508,12 +564,13 @@ fn render_sessions_dialog(
     frame.render_widget(block.clone(), popup_area);
 
     let inner = block.inner(popup_area);
+    let sections = Layout::vertical([Constraint::Min(6), Constraint::Length(8)]).split(inner);
     if app.sessions.is_empty() {
         frame.render_widget(
-            Paragraph::new("No saved sessions.\n\nTUI sessions are ephemeral and not persisted across restarts.\nUse the web UI for persistent sessions.")
+            Paragraph::new("No saved sessions yet.\n\nSessions now persist locally for both TUI and GUI.\nStart a task, then use Enter to restore, F to fork, or D to delete a saved row.")
                 .style(Style::default().fg(text_dim))
                 .alignment(Alignment::Center),
-            inner,
+            sections[0],
         );
     } else {
         let items: Vec<ListItem> = app
@@ -526,16 +583,73 @@ fn render_sessions_dialog(
                 } else {
                     Style::default().fg(text)
                 };
-                ListItem::new(format!("#{}  {}  rounds={}", s.index, s.preview, s.rounds))
+                let prefix = if i == app.sessions_cursor { ">" } else { " " };
+                ListItem::new(format!(
+                    "{} #{}  {}  rounds={}  checkpoints={}  {}",
+                    prefix, s.index, s.preview, s.rounds, s.checkpoint_count, s.time
+                ))
                     .style(style)
             })
             .collect();
+        let mut list_state = ratatui::widgets::ListState::default();
+        list_state.select(Some(app.sessions_cursor));
         frame.render_stateful_widget(
-            List::new(items),
-            inner,
-            &mut ratatui::widgets::ListState::default(),
+            List::new(items).highlight_style(Style::default().fg(border_color).bg(accent)),
+            sections[0],
+            &mut list_state,
         );
     }
+
+    let details_block = Block::default()
+        .title(" Target ")
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(border_color));
+    let details_inner = details_block.inner(sections[1]);
+    frame.render_widget(details_block, sections[1]);
+
+    let selected_target = app.selected_sessions_dialog_target();
+    let checkpoints = app.selected_sessions_dialog_checkpoints();
+    let target_label = selected_target
+        .map(|(session_index, checkpoint_index)| {
+            checkpoint_index
+                .map(|checkpoint| format!("session #{session_index} @ checkpoint {checkpoint}"))
+                .unwrap_or_else(|| format!("session #{session_index} latest state"))
+        })
+        .unwrap_or_else(|| "no session selected".into());
+    let checkpoint_summary = if checkpoints.is_empty() {
+        vec![Line::from(Span::styled("No restore points yet.", Style::default().fg(text_dim)))]
+    } else {
+        checkpoints
+            .iter()
+            .take(3)
+            .enumerate()
+            .map(|(index, checkpoint)| {
+                let selected = app.sessions_checkpoint_cursor == index + 1;
+                let style = if selected {
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(text_dim)
+                };
+                Line::from(Span::styled(
+                    format!(
+                        "{} checkpoint {} · {} · {} rounds",
+                        if selected { ">" } else { " " },
+                        checkpoint.index,
+                        checkpoint.preview,
+                        checkpoint.rounds
+                    ),
+                    style,
+                ))
+            })
+            .collect()
+    };
+    let mut detail_lines = vec![
+        Line::from(Span::styled(format!("Target: {target_label}"), Style::default().fg(text))),
+        Line::from(Span::styled("Left/Right picks latest state or a checkpoint. Enter restores. F forks. D deletes the session.", Style::default().fg(text_dim))),
+        Line::from(Span::styled("Recent restore points:", Style::default().fg(text).add_modifier(Modifier::BOLD))),
+    ];
+    detail_lines.extend(checkpoint_summary);
+    frame.render_widget(Paragraph::new(detail_lines), details_inner);
 }
 
 // ── Help Dialog ────────────────────────────────────────────────────
@@ -578,6 +692,9 @@ fn render_help_dialog(
         Line::from(Span::styled("  F3        Review mode (50 turns)", Style::default().fg(text))),
         Line::from(Span::styled("  F4        Toggle Multi-Agent", Style::default().fg(text))),
         Line::from(Span::styled("  F5        Toggle One Shot", Style::default().fg(text))),
+        Line::from(Span::styled("  F6        Toggle YOLO", Style::default().fg(text))),
+        Line::from(Span::styled("  F7        Toggle Auto model routing", Style::default().fg(text))),
+        Line::from(Span::styled("  Shift+Tab Cycle reasoning effort", Style::default().fg(text))),
         Line::from(""),
         Line::from(Span::styled("Navigation", Style::default().fg(text).add_modifier(Modifier::BOLD))),
         Line::from(Span::styled("  Ctrl+W    Toggle sidebar", Style::default().fg(text))),
@@ -591,8 +708,15 @@ fn render_help_dialog(
         Line::from(Span::styled("  /help     Show this help", Style::default().fg(text))),
         Line::from(Span::styled("  /stop     Stop generation", Style::default().fg(text))),
         Line::from(Span::styled("  /refresh  Refresh workspace", Style::default().fg(text))),
+        Line::from(Span::styled("  /auto     Toggle auto model routing", Style::default().fg(text))),
+        Line::from(Span::styled("  /profiles Show DeepSeek provider presets", Style::default().fg(text))),
+        Line::from(Span::styled("  /preset <id> Apply a DeepSeek preset", Style::default().fg(text))),
+        Line::from(Span::styled("  /continue <session[@checkpoint]>", Style::default().fg(text))),
+        Line::from(Span::styled("  /fork <session[@checkpoint]>", Style::default().fg(text))),
+        Line::from(Span::styled("  /delete <session>", Style::default().fg(text))),
         Line::from(""),
         Line::from(Span::styled("System", Style::default().fg(text).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled("  Sessions dialog: ←/→ target checkpoint, Enter restore, F fork, D delete", Style::default().fg(text))),
         Line::from(Span::styled("  Ctrl+Q    Quit", Style::default().fg(text))),
         Line::from(""),
         Line::from(Span::styled("Press any key to close this dialog", Style::default().fg(text).add_modifier(Modifier::ITALIC))),

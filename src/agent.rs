@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -8,6 +9,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use regex::Regex;
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex, RwLock as TokioRwLock};
 use tokio::task::JoinHandle;
@@ -20,6 +22,148 @@ use crate::types::{
 };
 use crate::workflow::{AgentMode, Workflow};
 
+fn default_agent_cwd() -> Result<PathBuf> {
+    let root = std::env::var("GENERIC_CODER_PROJECT_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .or_else(crate::workspace::effective_root)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let temp_dir = if root.ends_with("temp") {
+        root
+    } else {
+        root.join("temp")
+    };
+
+    fs::create_dir_all(&temp_dir)?;
+    Ok(fs::canonicalize(&temp_dir).unwrap_or(temp_dir))
+}
+
+fn extract_tagged_block(response_content: &str, tag_name: &str) -> Option<String> {
+    let open_tag = format!("<{tag_name}>");
+    let close_tag = format!("</{tag_name}>");
+    let start = response_content.find(&open_tag)? + open_tag.len();
+    let end = response_content[start..].find(&close_tag)? + start;
+    Some(response_content[start..end].to_string())
+}
+
+fn extract_first_fenced_code_block(response_content: &str) -> Option<String> {
+    let start = response_content.find("```")?;
+    let after_open = &response_content[start + 3..];
+    let content_start = after_open.find('\n')? + start + 4;
+    let content_end = response_content[content_start..].find("```")? + content_start;
+    Some(response_content[content_start..content_end].to_string())
+}
+
+fn file_write_content_from_response(response_content: &str) -> Option<String> {
+    extract_tagged_block(response_content, "file_content")
+        .or_else(|| extract_first_fenced_code_block(response_content))
+}
+
+fn file_write_content_from_tool_block(response_content: &str, path: &str) -> Option<String> {
+    let tool_re = Regex::new(r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</(?:tool_use|tool_call)>")
+        .ok()?;
+    for caps in tool_re.captures_iter(response_content) {
+        let raw = caps.get(1)?.as_str().trim();
+        let parsed = crate::llm::tryparse_json(raw).ok()?;
+        if parsed.get("name").and_then(|value| value.as_str()) != Some("file_write") {
+            continue;
+        }
+        let arguments = parsed
+            .get("arguments")
+            .or_else(|| parsed.get("args"))
+            .or_else(|| parsed.get("input"))?;
+        let candidate_path = arguments
+            .get("path")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        if !path.is_empty() && !candidate_path.is_empty() && candidate_path != path {
+            continue;
+        }
+        if let Some(content) = arguments
+            .get("content")
+            .or_else(|| arguments.get("text"))
+            .and_then(|value| value.as_str())
+        {
+            return Some(content.to_string());
+        }
+    }
+    None
+}
+
+fn code_run_request_from_args(args: &Value) -> (String, String) {
+    let command = args
+        .get("command")
+        .or_else(|| args.get("cmd"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let code = args
+        .get("code")
+        .or_else(|| args.get("script"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(command)
+        .to_string();
+    let code_type = args
+        .get("type")
+        .or_else(|| args.get("language"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| if !command.is_empty() { "bash" } else { "python" })
+        .to_string();
+    (code, code_type)
+}
+
+fn canonicalize_tool_invocation(tool_name: &str, args: &Value) -> (String, Value) {
+    match tool_name {
+        "bash" | "sh" | "execute_command" => {
+            let mut normalized = args.clone();
+            if let Some(object) = normalized.as_object_mut() {
+                if object.get("type").is_none() && object.get("language").is_none() {
+                    object.insert("type".into(), Value::String("bash".into()));
+                }
+            }
+            ("code_run".into(), normalized)
+        }
+        "file_list" => ("workspace_list".into(), args.clone()),
+        "git_show" => {
+            let hash = args.get("hash").and_then(|value| value.as_str()).unwrap_or("");
+            if hash.is_empty() {
+                return (tool_name.into(), args.clone());
+            }
+            let path_repo = args
+                .get("path_repo")
+                .or_else(|| args.get("cwd"))
+                .and_then(|value| value.as_str())
+                .unwrap_or(".");
+            let max_lines = args
+                .get("max_lines")
+                .or_else(|| args.get("count"))
+                .and_then(|value| value.as_u64())
+                .unwrap_or(200);
+            let command = format!(
+                "cd {} && git --no-pager show {} | head -n {}",
+                shell_quote(path_repo),
+                shell_quote(hash),
+                max_lines
+            );
+            (
+                "code_run".into(),
+                json!({
+                    "command": command,
+                    "type": "bash",
+                    "cwd": path_repo,
+                }),
+            )
+        }
+        _ => (tool_name.into(), args.clone()),
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
 // ── 1. LlmClient trait ───────────────────────────────────────────────────────
 
 #[async_trait]
@@ -29,6 +173,7 @@ pub trait LlmClient: Send + Sync {
     fn clear_tools_cache(&mut self);
     fn set_tools(&mut self, tools: Vec<ToolSchema>);
     fn set_system(&mut self, system: &str);
+    fn set_reasoning_effort(&mut self, effort: Option<String>);
     async fn chat(
         &mut self,
         messages: Vec<Message>,
@@ -58,6 +203,10 @@ impl LlmClient for ToolClientSession {
     fn set_tools(&mut self, _tools: Vec<ToolSchema>) {}
 
     fn set_system(&mut self, _system: &str) {}
+    fn set_reasoning_effort(&mut self, effort: Option<String>) {
+        self.config.reasoning_effort = effort;
+    }
+
 
     async fn chat(
         &mut self,
@@ -116,6 +265,15 @@ fn mode_str(mode: AgentMode) -> &'static str {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AutoRouteDecision {
+    pub model_index: usize,
+    pub model: String,
+    pub display_name: String,
+    pub reasoning_effort: Option<String>,
+    pub reason: String,
+}
+
 #[async_trait]
 impl LlmClient for NativeClaudeClientSession {
     fn name(&self) -> &str {
@@ -131,6 +289,10 @@ impl LlmClient for NativeClaudeClientSession {
     fn set_tools(&mut self, _tools: Vec<ToolSchema>) {}
 
     fn set_system(&mut self, _system: &str) {}
+    fn set_reasoning_effort(&mut self, effort: Option<String>) {
+        self.config.reasoning_effort = effort;
+    }
+
 
     async fn chat(
         &mut self,
@@ -227,6 +389,10 @@ pub struct GenericAgent {
     pub agent_workflow: RwLock<Workflow>,
     pub multi_agent_enabled: RwLock<bool>,
     pub one_shot_enabled: RwLock<bool>,
+    pub yolo_enabled: RwLock<bool>,
+    pub reasoning_effort: RwLock<Option<String>>,
+    pub auto_model_enabled: RwLock<bool>,
+    pub last_auto_route: RwLock<Option<AutoRouteDecision>>,
 }
 
 impl GenericAgent {
@@ -243,6 +409,10 @@ impl GenericAgent {
             agent_workflow: RwLock::new(Workflow::default()),
             multi_agent_enabled: RwLock::new(false),
             one_shot_enabled: RwLock::new(false),
+            yolo_enabled: RwLock::new(false),
+            reasoning_effort: RwLock::new(None),
+            auto_model_enabled: RwLock::new(false),
+            last_auto_route: RwLock::new(None),
         }
     }
 
@@ -276,8 +446,172 @@ impl GenericAgent {
         *self.one_shot_enabled.write().unwrap() = enabled;
     }
 
+    /// Check if YOLO (auto-approve) mode is enabled
+    pub fn is_yolo(&self) -> bool {
+        *self.yolo_enabled.read().unwrap()
+    }
+
+    /// Set YOLO (auto-approve) mode
+    pub fn set_yolo(&self, enabled: bool) {
+        *self.yolo_enabled.write().unwrap() = enabled;
+    }
+
+    pub fn is_auto_model(&self) -> bool {
+        *self.auto_model_enabled.read().unwrap()
+    }
+
+    pub fn set_auto_model(&self, enabled: bool) {
+        *self.auto_model_enabled.write().unwrap() = enabled;
+        if !enabled {
+            *self.last_auto_route.write().unwrap() = None;
+        }
+    }
+
+    pub fn get_last_auto_route(&self) -> Option<AutoRouteDecision> {
+        self.last_auto_route.read().unwrap().clone()
+    }
+
+    /// Get current reasoning effort override
+    pub fn get_reasoning_effort(&self) -> Option<String> {
+        self.reasoning_effort.read().unwrap().clone()
+    }
+
+    /// Set reasoning effort override (None / Some("off") / Some("high") / Some("max"))
+    pub fn set_reasoning_effort(&self, effort: Option<String>) {
+        *self.reasoning_effort.write().unwrap() = effort;
+    }
+
     fn client(&self) -> Option<Arc<TokioRwLock<dyn LlmClient>>> {
         self.llm_clients.get(self.current_llm_no).cloned()
+    }
+
+    fn pick_auto_route(&self, query: &str) -> Option<AutoRouteDecision> {
+        if self.llm_clients.is_empty() {
+            return None;
+        }
+
+        let inventory: Vec<(usize, String, String)> = self
+            .llm_clients
+            .iter()
+            .enumerate()
+            .filter_map(|(index, client)| {
+                client.try_read().ok().map(|guard| {
+                    (index, guard.model().to_string(), guard.name().to_string())
+                })
+            })
+            .collect();
+        if inventory.is_empty() {
+            return None;
+        }
+
+        let current = inventory
+            .iter()
+            .find(|(index, _, _)| *index == self.current_llm_no)
+            .cloned()
+            .unwrap_or_else(|| inventory[0].clone());
+
+        let flash = inventory
+            .iter()
+            .find(|(_, model, _)| {
+                let lower = model.to_ascii_lowercase();
+                lower.contains("deepseek-v4-flash") || lower.contains("deepseek-chat")
+            })
+            .cloned();
+        let pro = inventory
+            .iter()
+            .find(|(_, model, _)| {
+                let lower = model.to_ascii_lowercase();
+                lower.contains("deepseek-v4-pro") || lower.contains("deepseek-reasoner")
+            })
+            .cloned();
+
+        let lower = query.to_ascii_lowercase();
+        let lines = query.lines().count();
+        let chars = query.chars().count();
+        let mut score = 0;
+
+        if chars > 240 {
+            score += 1;
+        }
+        if chars > 900 {
+            score += 2;
+        }
+        if lines > 6 {
+            score += 1;
+        }
+
+        let strong_keywords = [
+            "debug", "fix", "refactor", "architecture", "design", "security", "migrate",
+            "release", "incident", "compare", "audit", "carefully", "complex", "仔细",
+            "修复", "重构", "架构", "设计", "安全", "迁移", "发布", "审查", "分析",
+        ];
+        let medium_keywords = [
+            "test", "plan", "review", "performance", "optimize", "workflow", "session",
+            "implement", "explain", "实现", "测试", "规划", "评审", "性能", "优化",
+            "工作流", "会话", "说明",
+        ];
+
+        score += strong_keywords
+            .iter()
+            .filter(|keyword| lower.contains(**keyword))
+            .count() as i32
+            * 2;
+        score += medium_keywords
+            .iter()
+            .filter(|keyword| lower.contains(**keyword))
+            .count() as i32;
+
+        let mode = *self.agent_mode.read().unwrap();
+        if !matches!(mode, AgentMode::Work) {
+            score += 2;
+        }
+        if self.is_multi_agent() || self.is_one_shot() || self.is_yolo() {
+            score += 1;
+        }
+
+        let routed = if score >= 4 {
+            pro.clone().or(flash.clone()).unwrap_or(current.clone())
+        } else {
+            flash.clone().or(pro.clone()).unwrap_or(current.clone())
+        };
+        let reasoning_effort = if score >= 6 {
+            Some("max".to_string())
+        } else if score >= 2 {
+            Some("high".to_string())
+        } else {
+            Some("low".to_string())
+        };
+
+        let reason = if score >= 6 {
+            "High-complexity task: elevated to stronger model and maximum reasoning".to_string()
+        } else if score >= 2 {
+            "Coding/debugging style task: balanced toward stronger reasoning".to_string()
+        } else {
+            "Short/simple turn: stay on faster route".to_string()
+        };
+
+        Some(AutoRouteDecision {
+            model_index: routed.0,
+            model: routed.1,
+            display_name: routed.2,
+            reasoning_effort,
+            reason,
+        })
+    }
+
+    fn select_client_for_query(
+        &self,
+        query: &str,
+    ) -> Option<(Arc<TokioRwLock<dyn LlmClient>>, Option<AutoRouteDecision>)> {
+        if self.is_auto_model() {
+            let route = self.pick_auto_route(query)?;
+            let client = self.llm_clients.get(route.model_index).cloned()?;
+            *self.last_auto_route.write().unwrap() = Some(route.clone());
+            Some((client, Some(route)))
+        } else {
+            *self.last_auto_route.write().unwrap() = None;
+            self.client().map(|client| (client, None))
+        }
     }
 
     pub fn load_llm_sessions(
@@ -446,7 +780,7 @@ impl GenericAgent {
 
             self.is_running.store(true, Ordering::SeqCst);
 
-            let client = match self.client() {
+            let (client, route) = match self.select_client_for_query(&query) {
                 Some(c) => c,
                 None => {
                     let _ = reply_tx
@@ -457,7 +791,30 @@ impl GenericAgent {
                 }
             };
 
-            let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("./temp"))));
+            {
+                let effort = route
+                    .as_ref()
+                    .and_then(|decision| decision.reasoning_effort.clone())
+                    .or_else(|| self.reasoning_effort.read().unwrap().clone());
+                if let Ok(mut guard) = client.try_write() {
+                    guard.set_reasoning_effort(effort);
+                }
+            }
+
+            let handler_cwd = match default_agent_cwd() {
+                Ok(path) => path,
+                Err(err) => {
+                    let _ = reply_tx
+                        .send(Value::String(format!(
+                            "[ERROR] Failed to initialize agent workspace: {err:#}"
+                        )))
+                        .await;
+                    self.is_running.store(false, Ordering::SeqCst);
+                    continue;
+                }
+            };
+            let handler = Arc::new(RwLock::new(AgentHandler::new(handler_cwd)));
+            handler.write().unwrap().code_stop_signal = self.stop_sig.clone();
             let (output_tx, mut output_rx) = mpsc::channel::<String>(256);
 
             let exit_reason = agent_runner_loop(
@@ -521,7 +878,7 @@ impl GenericAgent {
         };
         self.history.push(format!("[USER]: {}", trunc));
 
-        let client = match self.client() {
+        let (client, route) = match self.select_client_for_query(&query) {
             Some(c) => c,
             None => {
                 let _ = display_tx
@@ -535,7 +892,21 @@ impl GenericAgent {
             }
         };
 
-        let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("./temp"))));
+        let handler_cwd = match default_agent_cwd() {
+            Ok(path) => path,
+            Err(err) => {
+                let _ = display_tx
+                    .send(serde_json::json!({
+                        "done": format!("[ERROR] Failed to initialize agent workspace: {err:#}"),
+                        "source": source
+                    }))
+                    .await;
+                self.is_running.store(false, Ordering::SeqCst);
+                return;
+            }
+        };
+        let handler = Arc::new(RwLock::new(AgentHandler::new(handler_cwd)));
+        handler.write().unwrap().code_stop_signal = self.stop_sig.clone();
         // Set model name for error attribution
         let model_name = client
             .try_read()
@@ -543,10 +914,42 @@ impl GenericAgent {
             .unwrap_or_default();
         handler.write().unwrap().model_name = RwLock::new(model_name);
 
-        // Inherit mode and workflow from agent (set by web UI)
+        // Inherit mode and workflow from the frontend-selected agent state.
         *handler.write().unwrap().mode.write().unwrap() = *self.agent_mode.read().unwrap();
         *handler.write().unwrap().workflow.write().unwrap() = self.agent_workflow.read().unwrap().clone();
         self.handler = Some(handler.clone());
+
+        // Apply runtime reasoning effort override to the current LLM client
+        {
+            let effort = route
+                .as_ref()
+                .and_then(|decision| decision.reasoning_effort.clone())
+                .or_else(|| self.reasoning_effort.read().unwrap().clone());
+            if let Ok(mut guard) = client.try_write() {
+                guard.set_reasoning_effort(effort);
+            }
+        }
+
+        if let Some(route) = &route {
+            let _ = display_tx
+                .send(serde_json::json!({
+                    "route": {
+                        "model": route.model,
+                        "display_name": route.display_name,
+                        "reasoning_effort": route.reasoning_effort,
+                        "reason": route.reason,
+                    },
+                    "source": source,
+                }))
+                .await;
+        }
+
+        // YOLO mode: inject auto-approve note into system prompt
+        let sys_prompt = if *self.yolo_enabled.read().unwrap() {
+            format!("{}\n\n[YOLO MODE ACTIVE] Execute all tool calls immediately without asking for confirmation. Be autonomous and decisive.", sys_prompt)
+        } else {
+            sys_prompt
+        };
 
         // ── Multi-agent ACP execution ────────────────────────────────
         if self.is_multi_agent() {
@@ -837,14 +1240,17 @@ impl AgentHandler {
     // ── dispatch ─────────────────────────────────────────────────────────
 
     pub fn dispatch(&self, tool_name: &str, args: Value, response_content: &str) -> StepOutcome {
-        match tool_name {
+        let (tool_name, args) = canonicalize_tool_invocation(tool_name, &args);
+        match tool_name.as_str() {
             "code_run" => self.do_code_run(&args),
             "file_read" => self.do_file_read(&args),
             "file_patch" => self.do_file_patch(&args),
-            "file_write" => self.do_file_write(&args),
+            "file_write" => self.do_file_write(&args, response_content),
             "file_revert" => self.do_file_revert(&args),
             "web_scan" => self.do_web_scan(&args),
             "web_execute_js" => self.do_web_execute_js(&args),
+            "web_search" => self.do_web_search(&args),
+            "web_fetch" => self.do_web_fetch(&args),
             "ask_user" => self.do_ask_user(&args),
             "update_working_checkpoint" => self.do_update_working_checkpoint(&args),
             "no_tool" => self.do_no_tool(response_content),
@@ -852,6 +1258,7 @@ impl AgentHandler {
             "workspace_open" => self.do_workspace_open(&args),
             "workspace_list" => self.do_workspace_list(&args),
             "workspace_search" => self.do_workspace_search(&args),
+            "file_search" => self.do_file_search(&args),
             "content_search" => self.do_content_search(&args),
             "git_status" => self.do_git_status(&args),
             "git_diff" => self.do_git_diff(&args),
@@ -864,10 +1271,11 @@ impl AgentHandler {
             "media_info" => self.do_media_info(&args),
             "media_extract" => self.do_media_extract(&args),
             "computer_screenshot" => self.do_computer_screenshot(&args),
+            "computer_open" => self.do_computer_open(&args),
             "computer_action" => self.do_computer_action(&args),
             _ => {
                 self.record_error(
-                    tool_name,
+                    &tool_name,
                     "Unknown tool invoked",
                     ErrorSeverity::Validation,
                     serde_json::json!({"args": crate::tools::smart_format(&args, Some(200), None)}),
@@ -888,22 +1296,14 @@ impl AgentHandler {
     }
 
     fn do_code_run(&self, args: &Value) -> StepOutcome {
-        let code = args
-            .get("code")
-            .or_else(|| args.get("script"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let code_type = args
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("python");
+        let (code, code_type) = code_run_request_from_args(args);
         let timeout = args.get("timeout").and_then(|v| v.as_u64());
         let code_cwd = args.get("cwd").and_then(|v| v.as_str());
         let cwd = self.cwd_str();
 
         match crate::tools::code_run(
-            code,
-            code_type,
+            &code,
+            &code_type,
             timeout,
             Some(&cwd),
             code_cwd,
@@ -1001,19 +1401,44 @@ impl AgentHandler {
         }
     }
 
-    fn do_file_write(&self, args: &Value) -> StepOutcome {
+    fn do_file_write(&self, args: &Value, response_content: &str) -> StepOutcome {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        let content_from_tool_block = file_write_content_from_tool_block(response_content, path);
+        let content_from_response = file_write_content_from_response(response_content);
         let content = args
             .get("content")
             .or_else(|| args.get("text"))
             .and_then(|v| v.as_str())
-            .unwrap_or("");
+            .map(str::to_string)
+            .or_else(|| content_from_tool_block.clone())
+            .or_else(|| content_from_response.clone())
+            .unwrap_or_default();
         let mode = args
             .get("mode")
             .and_then(|v| v.as_str())
             .unwrap_or("overwrite");
 
-        match crate::tools::file_write(path, content, Some(mode)) {
+        if content.is_empty()
+            && args.get("content").is_none()
+            && args.get("text").is_none()
+            && content_from_tool_block.is_none()
+            && content_from_response.is_none()
+        {
+            let msg = "file_write requires content in args.content/text or in a <file_content>...</file_content> block";
+            self.record_error(
+                "file_write",
+                msg,
+                ErrorSeverity::Validation,
+                serde_json::json!({"path": path, "mode": mode}),
+            );
+            return StepOutcome {
+                data: serde_json::json!({"error": msg}),
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            };
+        }
+
+        match crate::tools::file_write(path, &content, Some(mode)) {
             Ok(result) => StepOutcome {
                 data: result,
                 next_prompt: Some(String::new()),
@@ -1211,6 +1636,28 @@ impl AgentHandler {
             .and_then(|v| v.as_u64())
             .map(|value| value as usize)
             .unwrap_or(50);
+        StepOutcome {
+            data: crate::workspace::search_files(query, path, max_results),
+            next_prompt: Some(String::new()),
+            should_exit: false,
+        }
+    }
+
+    fn do_file_search(&self, args: &Value) -> StepOutcome {
+        let query = args
+            .get("query")
+            .or_else(|| args.get("pattern"))
+            .or_else(|| args.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        let max_results = args
+            .get("max_results")
+            .or_else(|| args.get("count"))
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize)
+            .unwrap_or(50);
+
         StepOutcome {
             data: crate::workspace::search_files(query, path, max_results),
             next_prompt: Some(String::new()),
@@ -1515,6 +1962,67 @@ impl AgentHandler {
         }
     }
 
+    fn do_web_search(&self, args: &Value) -> StepOutcome {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let max_results = args
+            .get("max_results")
+            .or_else(|| args.get("count"))
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::web_search(query, max_results) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "web_search",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    json!({"query": query, "max_results": max_results}),
+                );
+                StepOutcome {
+                    data: json!({"status": "error", "error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_web_fetch(&self, args: &Value) -> StepOutcome {
+        let url = args.get("url").and_then(|v| v.as_str()).unwrap_or("");
+        let max_chars = args
+            .get("max_chars")
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::web_fetch(url, max_chars) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "web_fetch",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    json!({"url": url, "max_chars": max_chars}),
+                );
+                StepOutcome {
+                    data: json!({"status": "error", "error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
     // ── Computer Use ─────────────────────────────────────────────────────
 
     fn do_computer_screenshot(&self, args: &Value) -> StepOutcome {
@@ -1534,6 +2042,34 @@ impl AgentHandler {
             Err(e) => {
                 let msg = format!("{:#}", e);
                 self.record_error("computer_screenshot", &msg, ErrorSeverity::Tool, json!({}));
+                StepOutcome {
+                    data: json!({"status": "error", "error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_computer_open(&self, args: &Value) -> StepOutcome {
+        let application = args.get("application").and_then(|v| v.as_str());
+        let target = args.get("target").and_then(|v| v.as_str());
+        let wait_timeout_ms = args.get("wait_timeout_ms").and_then(|v| v.as_u64());
+
+        match crate::tools::computer_open(application, target, wait_timeout_ms) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "computer_open",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    json!({"application": application, "target": target}),
+                );
                 StepOutcome {
                     data: json!({"status": "error", "error": msg}),
                     next_prompt: Some(String::new()),
@@ -1821,20 +2357,45 @@ pub async fn agent_runner_loop(
         );
 
         if should_exit {
+            let interrupt_payload = tool_results.iter().find_map(|result| {
+                if result
+                    .get("status")
+                    .and_then(|value| value.as_str())
+                    == Some("INTERRUPT")
+                {
+                    Some(result.clone())
+                } else {
+                    None
+                }
+            });
+            let final_output = if let Some(interrupt) = interrupt_payload.as_ref() {
+                interrupt
+                    .get("message")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| {
+                        if response.content.trim().is_empty() {
+                            response.raw.clone()
+                        } else {
+                            response.content.clone()
+                        }
+                    })
+            } else if response.content.trim().is_empty() {
+                response.raw.clone()
+            } else {
+                response.content.clone()
+            };
+
             let mut exit = HashMap::new();
             exit.insert("reason".into(), Value::String("should_exit".into()));
             exit.insert(
                 "message".into(),
                 Value::String(format!("exited at turn {}", turn)),
             );
-            exit.insert(
-                "final_output".into(),
-                Value::String(if response.content.trim().is_empty() {
-                    response.raw.clone()
-                } else {
-                    response.content.clone()
-                }),
-            );
+            exit.insert("final_output".into(), Value::String(final_output));
+            if let Some(interrupt) = interrupt_payload {
+                exit.insert("interrupt".into(), interrupt);
+            }
             return Ok(exit);
         }
 
@@ -1894,7 +2455,9 @@ pub async fn agent_runner_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
     use tokio::sync::mpsc;
 
     struct MockLlmClient {
@@ -1918,6 +2481,9 @@ mod tests {
         fn set_tools(&mut self, _tools: Vec<ToolSchema>) {}
 
         fn set_system(&mut self, _system: &str) {}
+        fn set_reasoning_effort(&mut self, _effort: Option<String>) {
+        }
+
 
         async fn chat(
             &mut self,
@@ -1979,5 +2545,171 @@ mod tests {
             exit.get("final_output").and_then(|value| value.as_str()),
             Some("Hello!")
         );
+    }
+
+    #[tokio::test]
+    async fn ask_user_interrupt_is_exposed_in_exit_payload() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let client: Arc<TokioRwLock<dyn LlmClient>> = Arc::new(TokioRwLock::new(MockLlmClient {
+            calls: calls.clone(),
+            response: LlmResponse {
+                thinking: String::new(),
+                content: String::new(),
+                tool_calls: vec![ToolCall {
+                    id: "tool-1".to_string(),
+                    name: "ask_user".to_string(),
+                    arguments: json!({
+                        "question": "Pick a mode",
+                        "candidates": ["Fast", "Safe"]
+                    }),
+                }],
+                raw: String::new(),
+                stop_reason: "tool_use".to_string(),
+                usage: None,
+            },
+            chunk: String::new(),
+        }));
+        let handler = Arc::new(RwLock::new(AgentHandler::new(PathBuf::from("."))));
+        let (output_tx, mut output_rx) = mpsc::channel(8);
+
+        let exit = agent_runner_loop(
+            client.clone(),
+            String::new(),
+            "need guidance".to_string(),
+            handler,
+            Vec::new(),
+            5,
+            false,
+            output_tx,
+            None,
+        )
+        .await
+        .unwrap();
+
+        while output_rx.recv().await.is_some() {}
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            exit.get("final_output").and_then(|value| value.as_str()),
+            Some("ask_user requires user interaction")
+        );
+        let interrupt = exit.get("interrupt").cloned().unwrap_or(Value::Null);
+        assert_eq!(interrupt.get("status").and_then(|value| value.as_str()), Some("INTERRUPT"));
+        assert_eq!(
+            interrupt.get("message").and_then(|value| value.as_str()),
+            Some("ask_user requires user interaction")
+        );
+    }
+
+    #[test]
+    fn file_write_content_from_response_prefers_file_content_tag() {
+        let response = "Before\n<file_content>hello\nworld\n</file_content>\nAfter\n```txt\nignored\n```";
+        assert_eq!(
+            file_write_content_from_response(response).as_deref(),
+            Some("hello\nworld\n")
+        );
+    }
+
+    #[test]
+    fn file_write_content_from_response_falls_back_to_fenced_block() {
+        let response = "Some text\n```markdown\n# Title\nbody\n```\nMore text";
+        assert_eq!(
+            file_write_content_from_response(response).as_deref(),
+            Some("# Title\nbody\n")
+        );
+    }
+
+    #[test]
+    fn file_write_content_from_tool_block_reads_content_from_raw_tool_json() {
+        let response = r##"<tool_use>{"name":"file_write","arguments":{"path":"README.md","content":"# Title\nbody\n"}}</tool_use>"##;
+        assert_eq!(
+            file_write_content_from_tool_block(response, "README.md").as_deref(),
+            Some("# Title\nbody\n")
+        );
+    }
+
+    #[test]
+    fn file_write_content_from_tool_block_matches_requested_path() {
+        let response = r##"<tool_use>{"name":"file_write","arguments":{"path":"OTHER.md","content":"ignored"}}</tool_use>
+<tool_use>{"name":"file_write","arguments":{"path":"README.md","content":"kept"}}</tool_use>"##;
+        assert_eq!(
+            file_write_content_from_tool_block(response, "README.md").as_deref(),
+            Some("kept")
+        );
+    }
+
+    #[test]
+    fn code_run_request_from_args_supports_command_alias_and_bash_default() {
+        let (code, code_type) = code_run_request_from_args(&json!({
+            "command": "echo hello",
+            "timeout": 5
+        }));
+        assert_eq!(code, "echo hello");
+        assert_eq!(code_type, "bash");
+    }
+
+    #[test]
+    fn code_run_request_from_args_preserves_explicit_type() {
+        let (code, code_type) = code_run_request_from_args(&json!({
+            "command": "print('hello')",
+            "type": "python"
+        }));
+        assert_eq!(code, "print('hello')");
+        assert_eq!(code_type, "python");
+    }
+
+    #[test]
+    fn canonicalize_tool_invocation_maps_file_list_to_workspace_list() {
+        let (tool_name, args) = canonicalize_tool_invocation(
+            "file_list",
+            &json!({"path": "/tmp", "pattern": "**/*.png"}),
+        );
+        assert_eq!(tool_name, "workspace_list");
+        assert_eq!(args.get("path").and_then(|value| value.as_str()), Some("/tmp"));
+    }
+
+    #[test]
+    fn canonicalize_tool_invocation_maps_bash_to_code_run() {
+        let (tool_name, args) = canonicalize_tool_invocation(
+            "bash",
+            &json!({"command": "pwd"}),
+        );
+        assert_eq!(tool_name, "code_run");
+        assert_eq!(args.get("type").and_then(|value| value.as_str()), Some("bash"));
+    }
+
+    #[test]
+    fn canonicalize_tool_invocation_maps_git_show_to_code_run() {
+        let (tool_name, args) = canonicalize_tool_invocation(
+            "git_show",
+            &json!({"hash": "abc123", "path_repo": "/repo", "max_lines": 50}),
+        );
+        assert_eq!(tool_name, "code_run");
+        assert_eq!(args.get("type").and_then(|value| value.as_str()), Some("bash"));
+        let command = args.get("command").and_then(|value| value.as_str()).unwrap_or("");
+        assert!(command.contains("cd '/repo'"));
+        assert!(command.contains("git --no-pager show 'abc123'"));
+        assert!(command.contains("head -n 50"));
+    }
+
+    #[test]
+    fn do_file_write_rejects_missing_content() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let test_root = std::env::temp_dir().join(format!("generic-coder-agent-test-{unique}"));
+        fs::create_dir_all(&test_root).unwrap();
+
+        let handler = AgentHandler::new(test_root.clone());
+        let outcome = handler.do_file_write(&json!({ "path": "ANALYSIS.md" }), "No tagged body here");
+
+        assert_eq!(
+            outcome.data.get("error").and_then(|value| value.as_str()),
+            Some("file_write requires content in args.content/text or in a <file_content>...</file_content> block")
+        );
+        assert!(!test_root.join("ANALYSIS.md").exists());
+
+        let _ = fs::remove_dir_all(&test_root);
     }
 }

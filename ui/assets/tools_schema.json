@@ -91,6 +91,28 @@
       "path": {"type": "string", "description": "Directory to search. Defaults to active workspace root."}},
       "required": ["query"]}}},
   {"type": "function", "function": {
+    "name": "file_search",
+    "description": "Compatibility alias for workspace_search. Search for files by name within the active workspace.",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "Search query matching against file names."},
+      "path": {"type": "string", "description": "Directory to search. Defaults to active workspace root."},
+      "max_results": {"type": "integer", "description": "Maximum number of matches to return.", "default": 50}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "web_search",
+    "description": "Search the public web and return structured result links and snippets.",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "Search query."},
+      "max_results": {"type": "integer", "description": "Maximum number of results to return.", "default": 5}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "web_fetch",
+    "description": "Fetch a web page or text resource by URL and return normalized text content.",
+    "parameters": {"type": "object", "properties": {
+      "url": {"type": "string", "description": "Absolute URL to fetch."},
+      "max_chars": {"type": "integer", "description": "Maximum characters of extracted content to return.", "default": 12000}},
+      "required": ["url"]}}},
+  {"type": "function", "function": {
     "name": "remote_connect",
     "description": "Connect to a remote server via SSH. Use before remote_exec, remote_file_read/write. Supports key and password auth.",
     "parameters": {"type": "object", "properties": {

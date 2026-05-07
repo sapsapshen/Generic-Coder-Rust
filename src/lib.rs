@@ -9,7 +9,7 @@
 //! - `workspace` — Workspace manager
 //! - `remote` — SSH remote manager
 //! - `media` — Media file handler
-//! - `web` — Web UI server (Axum)
+//! - `web` — Frontend/backend server (Axum)
 
 pub mod acp;
 pub mod agent;
@@ -18,7 +18,9 @@ pub mod config;
 pub mod error_memory;
 pub mod llm;
 pub mod media;
+pub mod provider_profiles;
 pub mod remote;
+pub mod session_store;
 pub mod skills;
 pub mod tools;
 pub mod types;

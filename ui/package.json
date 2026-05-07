@@ -6,7 +6,15 @@
   "author": "Generic Coder",
   "license": "MIT",
   "scripts": {
-    "start": "electron .",
+    "build": "npm run build:workbench",
+    "build:workbench": "node scripts/build-workbench.mjs",
+    "prestart": "npm run build:workbench",
+    "prebuild:macos": "npm run build:workbench",
+    "prebuild:macos:x64": "npm run build:workbench",
+    "prebuild:macos:arm64": "npm run build:workbench",
+    "prebuild:windows": "npm run build:workbench",
+    "prebuild:all": "npm run build:workbench",
+    "start": "node scripts/launch-electron.cjs .",
     "build:macos": "electron-builder --mac pkg --x64 --arm64",
     "build:macos:x64": "electron-builder --mac pkg --x64",
     "build:macos:arm64": "electron-builder --mac pkg --arm64",
@@ -22,7 +30,6 @@
     "files": [
       "main.js",
       "preload.js",
-      "renderer/**/*",
       "assets/**/*",
       "!assets/*.md"
     ],
@@ -30,7 +37,9 @@
       {
         "from": "bin",
         "to": "bin",
-        "filter": ["generic-coder-backend*"]
+        "filter": [
+          "generic-coder-backend*"
+        ]
       }
     ],
     "artifactName": "${productName}-${version}-${arch}-installer.${ext}",
@@ -40,7 +49,10 @@
       "target": [
         {
           "target": "pkg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "hardenedRuntime": true,
@@ -61,7 +73,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -77,7 +91,13 @@
     }
   },
   "devDependencies": {
+    "esbuild": "^0.25.4",
     "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.45",
+    "monaco-editor": "^0.55.1"
   }
 }

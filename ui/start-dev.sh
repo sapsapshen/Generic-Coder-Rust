@@ -23,9 +23,8 @@ echo ""
 
 # ── Launch Electron ─────────────────────────────────────────────
 echo "Launching Electron dev mode..."
-echo "  App connects to backend at http://localhost:8765"
-echo "  Make sure the backend is running: cargo run --release"
+echo "  App starts its own backend on the first available localhost port"
 echo ""
 
 cd "$SCRIPT_DIR"
-npx electron .
+node scripts/launch-electron.cjs .

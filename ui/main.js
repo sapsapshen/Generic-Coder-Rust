@@ -2,9 +2,200 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const net = require('net');
 
 let mainWindow = null;
 let backendProcess = null;
+let startupErrorShown = false;
+const BACKEND_HOST = '127.0.0.1';
+const DEFAULT_BACKEND_PORT = 8765;
+let backendPort = DEFAULT_BACKEND_PORT;
+
+function backendOrigin() {
+  return `http://${BACKEND_HOST}:${backendPort}`;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function isBackendReady() {
+  const http = require('http');
+  return new Promise((resolve, reject) => {
+    const req = http.get(`${backendOrigin()}/health`, (res) => {
+      resolve(res.statusCode && res.statusCode >= 200 && res.statusCode < 300);
+    });
+    req.on('error', reject);
+    req.setTimeout(2000, () => {
+      req.destroy();
+      reject(new Error('timeout'));
+    });
+  });
+}
+
+async function fetchBackendText(pathname) {
+  const http = require('http');
+  return new Promise((resolve, reject) => {
+    const req = http.get(`${backendOrigin()}${pathname}`, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        resolve({
+          statusCode: res.statusCode || 0,
+          body,
+        });
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(3000, () => {
+      req.destroy();
+      reject(new Error('timeout'));
+    });
+  });
+}
+
+function canListenOnPort(port) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', (error) => {
+      if (error.code === 'EADDRINUSE' || error.code === 'EACCES') {
+        resolve(false);
+        return;
+      }
+      reject(error);
+    });
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, BACKEND_HOST);
+  });
+}
+
+async function findAvailablePort(startPort = DEFAULT_BACKEND_PORT) {
+  for (let port = startPort; port < startPort + 100; port++) {
+    if (await canListenOnPort(port)) {
+      return port;
+    }
+  }
+
+  throw new Error(`No available localhost port found from ${startPort} to ${startPort + 99}`);
+}
+
+function getErrorPageUrl(title, detail) {
+  const html = `<!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>${escapeHtml(title)}</title>
+      <style>
+        :root { color-scheme: dark; }
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          background: #1e1e1e;
+          color: #f8fafc;
+          font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        main {
+          width: min(760px, calc(100vw - 32px));
+          padding: 24px;
+          border-radius: 16px;
+          border: 1px solid #ef4444;
+          background: #2a1111;
+          box-shadow: 0 20px 64px rgba(0, 0, 0, 0.45);
+        }
+        h1 { margin: 0 0 12px; color: #fecaca; font-size: 20px; }
+        pre {
+          margin: 12px 0 0;
+          padding: 12px;
+          overflow: auto;
+          border-radius: 8px;
+          background: #111827;
+          color: #bfdbfe;
+          white-space: pre-wrap;
+        }
+      </style>
+    </head>
+    <body>
+      <main>
+        <h1>${escapeHtml(title)}</h1>
+        <p>Generic Coder could not render the workbench, so this diagnostic page is shown instead of a black screen.</p>
+        <pre>${escapeHtml(detail)}</pre>
+      </main>
+    </body>
+  </html>`;
+
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function showStartupError(title, detail) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  startupErrorShown = true;
+  console.error(`${title}: ${detail}`);
+  await mainWindow.loadURL(getErrorPageUrl(title, detail));
+  mainWindow.show();
+}
+
+async function loadWorkbenchWhenReady(options = {}) {
+  const {
+    retries = 60,
+    delayMs = 500,
+  } = options;
+
+  for (let i = 0; i < retries; i++) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return false;
+    }
+
+    try {
+      const ready = await isBackendReady();
+      if (ready) {
+        const response = await fetchBackendText('/');
+        if (response.statusCode < 200 || response.statusCode >= 300 || !response.body.trim()) {
+          await showStartupError(
+            'Generic Coder frontend is unavailable',
+            `GET / returned HTTP ${response.statusCode} with ${response.body.length} bytes.`,
+          );
+          return false;
+        }
+        if (!response.body.includes('/static/app.js')) {
+          await showStartupError(
+            'Generic Coder frontend assets are missing',
+            `The backend is healthy, but the workbench HTML does not reference /static/app.js.\n\nResponse preview:\n${response.body.slice(0, 1200)}`,
+          );
+          return false;
+        }
+        await mainWindow.loadURL(backendOrigin());
+        mainWindow.show();
+        return true;
+      }
+    } catch (error) {
+      // keep polling from the main process; renderer-side fetches from data: URLs are unreliable
+    }
+
+    await wait(delayMs);
+  }
+
+  return false;
+}
 
 function getBackendPath() {
   const isDev = !app.isPackaged;
@@ -66,6 +257,9 @@ function ensureProjectDir(projectDir) {
   const bundledAssetsDir = path.join(__dirname, 'assets');
   const targetAssetsDir = path.join(projectDir, 'assets');
   if (fs.existsSync(bundledAssetsDir)) {
+    const bundledFrontendDir = path.join(bundledAssetsDir, 'generic_coder');
+    const targetFrontendDir = path.join(targetAssetsDir, 'generic_coder');
+    syncBundledFrontend(bundledFrontendDir, targetFrontendDir);
     copyDirSync(bundledAssetsDir, targetAssetsDir);
     console.log('  assets synced');
   } else {
@@ -81,7 +275,17 @@ function ensureProjectDir(projectDir) {
   }
 }
 
-function copyDirSync(src, dest) {
+function syncBundledFrontend(src, dest) {
+  if (!fs.existsSync(src)) {
+    return;
+  }
+
+  fs.rmSync(dest, { recursive: true, force: true });
+  copyDirSync(src, dest, { overwrite: true });
+}
+
+function copyDirSync(src, dest, options = {}) {
+  const { overwrite = false } = options;
   if (!fs.existsSync(dest)) {
     fs.mkdirSync(dest, { recursive: true });
   }
@@ -90,10 +294,13 @@ function copyDirSync(src, dest) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
-      copyDirSync(srcPath, destPath);
+      copyDirSync(srcPath, destPath, options);
     } else {
-      // Only copy if dest doesn't exist or src is newer
-      if (!fs.existsSync(destPath) || fs.statSync(srcPath).mtime > fs.statSync(destPath).mtime) {
+      if (
+        overwrite ||
+        !fs.existsSync(destPath) ||
+        fs.statSync(srcPath).mtime > fs.statSync(destPath).mtime
+      ) {
         fs.copyFileSync(srcPath, destPath);
       }
     }
@@ -114,9 +321,12 @@ async function startBackend() {
   console.log('Project data directory:', projectDir);
   ensureProjectDir(projectDir);
 
+  backendPort = await findAvailablePort();
   console.log('Starting backend:', binPath);
+  console.log('Backend URL:', backendOrigin());
 
-  backendProcess = spawn(binPath, ['serve', '--port', '8765', '--host', '127.0.0.1'], {
+  backendProcess = spawn(binPath, ['serve', '--port', String(backendPort), '--host', BACKEND_HOST], {
+    cwd: projectDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
@@ -141,22 +351,15 @@ async function startBackend() {
     backendProcess = null;
   });
 
-  // Wait for the backend to be ready
-  const http = require('http');
-  const backendUrl = 'http://127.0.0.1:8765/health';
   const maxRetries = 30;
   for (let i = 0; i < maxRetries; i++) {
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await wait(500);
     try {
-      await new Promise((resolve, reject) => {
-        const req = http.get(backendUrl, (res) => {
-          resolve(res.statusCode);
-        });
-        req.on('error', reject);
-        req.setTimeout(2000, () => { req.destroy(); reject(new Error('timeout')); });
-      });
-      console.log('Backend is ready.');
-      return true;
+      const ready = await isBackendReady();
+      if (ready) {
+        console.log('Backend is ready.');
+        return true;
+      }
     } catch (e) {
       // still waiting
     }
@@ -180,12 +383,11 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 640,
     title: 'Generic Coder',
+    show: false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
     autoHideMenuBar: process.platform === 'win32',
-    vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
-    visualEffectState: 'active',
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#1e1e1e',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -198,16 +400,103 @@ function createWindow() {
     mainWindow.setMenuBarVisibility(false);
   }
 
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // Show window only when the renderer is ready to avoid a black flash
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
 
-  // Open DevTools in development
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 3000);
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    if (validatedURL.startsWith('data:')) {
+      return;
+    }
+    void showStartupError(
+      'Generic Coder page failed to load',
+      `${validatedURL}\n${errorCode}: ${errorDescription}`,
+    );
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    void showStartupError(
+      'Generic Coder renderer process crashed',
+      JSON.stringify(details, null, 2),
+    );
+  });
+
+  mainWindow.on('unresponsive', () => {
+    void showStartupError(
+      'Generic Coder window became unresponsive',
+      'The Electron renderer stopped responding during startup.',
+    );
+  });
+
+  mainWindow.loadURL(getLoadingPageUrl());
+
+  // Open DevTools in development for debugging
   if (!app.isPackaged) {
-    // mainWindow.webContents.openDevTools({ mode: 'detach' });
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+function getLoadingPageUrl() {
+  const html = `<!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Generic Coder</title>
+      <style>
+        :root { color-scheme: dark; }
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          background: #111827;
+          color: #f8fafc;
+          font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        .card {
+          width: min(420px, calc(100vw - 32px));
+          padding: 24px;
+          border-radius: 18px;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(15, 23, 42, 0.88);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        }
+        .spinner {
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
+          border: 3px solid rgba(255, 255, 255, 0.18);
+          border-top-color: #38bdf8;
+          animation: spin 0.9s linear infinite;
+          margin-bottom: 14px;
+        }
+        h1 { margin: 0 0 8px; font-size: 18px; }
+        p { margin: 0; color: #cbd5e1; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="spinner"></div>
+        <h1>Launching Generic Coder</h1>
+        <p>The desktop shell is starting the local Rust backend and loading the shared workbench.</p>
+      </div>
+    </body>
+  </html>`;
+
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
 // ── IPC Handlers ──────────────────────────────────────────────
@@ -226,13 +515,30 @@ ipcMain.handle('pick-folder', async () => {
 });
 
 ipcMain.handle('get-backend-url', () => {
-  return 'http://127.0.0.1:8765';
+  return backendOrigin();
 });
 
 // ── App Lifecycle ─────────────────────────────────────────────
 app.whenReady().then(async () => {
-  await startBackend();
   createWindow();
+  let backendReady = false;
+  try {
+    backendReady = await startBackend();
+  } catch (error) {
+    await showStartupError(
+      'Generic Coder backend failed to start',
+      error && error.stack ? error.stack : String(error),
+    );
+  }
+  const loaded = startupErrorShown
+    ? false
+    : await loadWorkbenchWhenReady({ retries: backendReady ? 3 : 60, delayMs: 500 });
+  if (!loaded && !startupErrorShown && mainWindow && !mainWindow.isDestroyed()) {
+    await showStartupError(
+      'Generic Coder failed to start',
+      'The backend did not become ready, so the shared workbench could not be loaded. Check the app logs for backend startup errors.',
+    );
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -250,4 +556,3 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   stopBackend();
 });
-

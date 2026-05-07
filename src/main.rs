@@ -163,7 +163,7 @@ async fn initialize_runtime(
         agent.next_llm(llm_no as isize)?;
     } else {
         log::warn!(
-            "No LLM clients configured. Save one in the Rust web UI settings or create mykey.json."
+            "No LLM clients configured. Save one in the desktop settings or create mykey.json."
         );
     }
     agent.verbose = verbose;
@@ -240,12 +240,9 @@ async fn main() -> Result<()> {
     let (agent, task_tx) = initialize_runtime(&project_dir, cli.llm_no, cli.verbose).await?;
 
     if let Some(Commands::Serve { host, port }) = cli.command {
-        let allow_remote = std::env::var("GENERIC_CODER_ALLOW_REMOTE")
-            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        if !allow_remote && host != "127.0.0.1" && host != "::1" && host != "localhost" {
+        if host != "127.0.0.1" && host != "::1" && host != "localhost" {
             anyhow::bail!(
-                "Refusing to bind to non-loopback host {host}. Set GENERIC_CODER_ALLOW_REMOTE=1 to override."
+                "Refusing to bind to non-loopback host {host}. Generic Coder only serves the desktop frontend on loopback."
             );
         }
         return web::serve(web::ServeConfig {

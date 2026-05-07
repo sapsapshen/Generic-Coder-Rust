@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
+use scraper::{Html, Selector};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
@@ -40,14 +41,8 @@ fn ensure_backup_dir() -> Result<PathBuf> {
 }
 
 fn access_root() -> Result<PathBuf> {
-    let active = workspace::get_active_workspace();
-    if active.get("status").and_then(|value| value.as_str()) == Some("success") {
-        let root = active
-            .get("path")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| anyhow!("Active workspace path is missing"))?;
-        return fs::canonicalize(root)
-            .with_context(|| format!("Cannot resolve active workspace root: {root}"));
+    if let Some(root) = workspace::effective_root() {
+        return Ok(root);
     }
 
     fs::canonicalize(".").context("Cannot resolve current working directory")
@@ -89,7 +84,7 @@ fn resolve_local_path_from(base: &Path, path: &str, allow_missing: bool) -> Resu
 }
 
 fn resolve_local_path(path: &str, allow_missing: bool) -> Result<PathBuf> {
-    let base = std::env::current_dir().context("Cannot resolve current working directory")?;
+    let base = access_root()?;
     resolve_local_path_from(&base, path, allow_missing)
 }
 
@@ -136,6 +131,119 @@ fn run_command_checked(command: &mut Command, label: &str) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_chars(text: &str, max_chars: usize) -> (String, bool) {
+    let total_chars = text.chars().count();
+    if total_chars <= max_chars {
+        return (text.to_string(), false);
+    }
+
+    (text.chars().take(max_chars).collect(), true)
+}
+
+fn extract_web_title_and_text(body: &str, content_type: Option<&str>) -> (Option<String>, String) {
+    let looks_like_html = content_type
+        .map(|value| value.to_ascii_lowercase().contains("html"))
+        .unwrap_or(false)
+        || body.contains("<html")
+        || body.contains("<body")
+        || body.contains("<!DOCTYPE html");
+
+    if !looks_like_html {
+        return (None, collapse_whitespace(body));
+    }
+
+    let document = Html::parse_document(body);
+    let title = Selector::parse("title")
+        .ok()
+        .and_then(|selector| document.select(&selector).next())
+        .map(|node| collapse_whitespace(&node.text().collect::<Vec<_>>().join(" ")))
+        .filter(|value| !value.is_empty());
+    let text = collapse_whitespace(&document.root_element().text().collect::<Vec<_>>().join(" "));
+
+    (title, text)
+}
+
+fn parse_duckduckgo_results(body: &str, limit: usize) -> Vec<Value> {
+    let document = Html::parse_document(body);
+    let result_selector = match Selector::parse(".result") {
+        Ok(selector) => selector,
+        Err(_) => return Vec::new(),
+    };
+    let link_selector = match Selector::parse("a.result__a") {
+        Ok(selector) => selector,
+        Err(_) => return Vec::new(),
+    };
+    let snippet_selector = match Selector::parse(".result__snippet") {
+        Ok(selector) => selector,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut results = Vec::new();
+    for result in document.select(&result_selector) {
+        if results.len() >= limit {
+            break;
+        }
+
+        let Some(link) = result.select(&link_selector).next() else {
+            continue;
+        };
+
+        let title = collapse_whitespace(&link.text().collect::<Vec<_>>().join(" "));
+        let url = link.value().attr("href").unwrap_or("").trim().to_string();
+        let snippet = result
+            .select(&snippet_selector)
+            .next()
+            .map(|node| collapse_whitespace(&node.text().collect::<Vec<_>>().join(" ")))
+            .unwrap_or_default();
+
+        if title.is_empty() || url.is_empty() {
+            continue;
+        }
+
+        results.push(json!({
+            "title": title,
+            "url": url,
+            "snippet": snippet,
+        }));
+    }
+
+    results
+}
+
+fn build_web_client() -> Result<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .user_agent("generic-coder/0.1")
+        .build()
+        .context("Failed to build web client")
+}
+
+fn run_web_request<T, F>(operation: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce(reqwest::blocking::Client) -> Result<T> + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let client = build_web_client()?;
+        operation(client)
+    })
+    .join()
+    .map_err(|panic| {
+        let reason = if let Some(message) = panic.downcast_ref::<&str>() {
+            (*message).to_string()
+        } else if let Some(message) = panic.downcast_ref::<String>() {
+            message.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+        anyhow!("Web request worker panicked: {reason}")
+    })?
 }
 
 #[allow(dead_code)]
@@ -209,12 +317,22 @@ fn find_python() -> Option<String> {
 
 /// Truncate a line that exceeds max_len, inserting an omission marker.
 fn truncate_line(line: &str, max_len: usize) -> String {
-    if line.len() <= max_len {
+    let char_len = line.chars().count();
+    if char_len <= max_len {
         return line.to_string();
     }
-    let head = &line[..max_len / 2];
-    let tail = &line[line.len() - max_len / 2..];
-    format!("{}…[TRUNCATED {}→{}]…{}", head, max_len, line.len(), tail)
+    let head_chars = max_len / 2;
+    let tail_chars = max_len.saturating_sub(head_chars);
+    let head: String = line.chars().take(head_chars).collect();
+    let tail: String = line
+        .chars()
+        .rev()
+        .take(tail_chars)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{}…[TRUNCATED {}→{}]…{}", head, max_len, char_len, tail)
 }
 
 // ---------------------------------------------------------------------------
@@ -318,8 +436,8 @@ pub fn code_run(
     code_cwd: Option<&str>,
     stop_signal: Option<Arc<AtomicBool>>,
 ) -> Result<JsonResult> {
-    let cwd = resolve_search_root(cwd.unwrap_or("."))?;
-    let code_cwd = resolve_search_root_from(&cwd, code_cwd)?;
+    let workspace_root = resolve_search_root(cwd.unwrap_or("."))?;
+    let code_cwd = resolve_search_root_from(&workspace_root, code_cwd)?;
     let timeout_dur = timeout.map(Duration::from_secs);
 
     let (cmd, args, write_file) = match code_type.to_lowercase().as_str() {
@@ -344,7 +462,7 @@ pub fn code_run(
 
     let mut child = Command::new(proc_path)
         .args(&args)
-        .current_dir(&cwd)
+        .current_dir(&code_cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -563,6 +681,10 @@ pub fn file_write(path: &str, content: &str, mode: Option<&str>) -> Result<JsonR
     let mode = mode.unwrap_or("overwrite");
     let file_path = resolve_local_path(path, true)?;
 
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
     // auto-backup
     file_backup(&file_path.display().to_string(), None);
 
@@ -589,9 +711,6 @@ pub fn file_write(path: &str, content: &str, mode: Option<&str>) -> Result<JsonR
         }
         _ => {
             // overwrite
-            if let Some(parent) = file_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
             fs::write(&file_path, content.as_bytes())?;
         }
     }
@@ -1037,9 +1156,20 @@ fn do_format(data: &Value, max_len: usize, omit: &str, depth: usize) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => n.to_string(),
         Value::String(s) => {
-            if s.len() > max_len {
-                let half = max_len / 2;
-                format!("{}…{}…{}", &s[..half], omit, &s[s.len() - half..])
+            let char_len = s.chars().count();
+            if char_len > max_len {
+                let head_chars = max_len / 2;
+                let tail_chars = max_len.saturating_sub(head_chars);
+                let head: String = s.chars().take(head_chars).collect();
+                let tail: String = s
+                    .chars()
+                    .rev()
+                    .take(tail_chars)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+                format!("{}…{}…{}", head, omit, tail)
             } else {
                 s.clone()
             }
@@ -1119,7 +1249,82 @@ pub fn format_error(e: &anyhow::Error) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// 17. web_scan (stub)
+// 17. web_search / web_fetch
+// ---------------------------------------------------------------------------
+
+pub fn web_search(query: &str, max_results: Option<usize>) -> Result<JsonResult> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Err(anyhow!("Search query is required"));
+    }
+
+    let limit = max_results.unwrap_or(5).max(1).min(20);
+    let query = query.to_string();
+    run_web_request(move |client| {
+        let response = client
+            .get("https://html.duckduckgo.com/html/")
+            .query(&[("q", query.as_str())])
+            .send()
+            .context("Failed to query DuckDuckGo")?
+            .error_for_status()
+            .context("DuckDuckGo returned an error status")?;
+
+        let final_url = response.url().to_string();
+        let body = response.text().context("Failed to read search response body")?;
+        let results = parse_duckduckgo_results(&body, limit);
+
+        Ok(json!({
+            "status": "ok",
+            "query": query,
+            "engine": "duckduckgo-html",
+            "url": final_url,
+            "count": results.len(),
+            "results": results,
+        }))
+    })
+}
+
+pub fn web_fetch(url: &str, max_chars: Option<usize>) -> Result<JsonResult> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err(anyhow!("URL is required"));
+    }
+
+    let limit = max_chars.unwrap_or(12_000).max(200).min(100_000);
+    let url = url.to_string();
+    run_web_request(move |client| {
+        let response = client
+            .get(&url)
+            .send()
+            .with_context(|| format!("Failed to fetch {url}"))?
+            .error_for_status()
+            .with_context(|| format!("Server returned an error for {url}"))?;
+
+        let status = response.status().as_u16();
+        let final_url = response.url().to_string();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let body = response.text().with_context(|| format!("Failed to read {url}"))?;
+        let (title, extracted_text) = extract_web_title_and_text(&body, content_type.as_deref());
+        let (content, truncated) = truncate_chars(&extracted_text, limit);
+
+        Ok(json!({
+            "status": "ok",
+            "url": final_url,
+            "status_code": status,
+            "content_type": content_type,
+            "title": title,
+            "content": content,
+            "truncated": truncated,
+        }))
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 18. web_scan (stub)
 // ---------------------------------------------------------------------------
 
 pub fn web_scan(
@@ -1136,7 +1341,7 @@ pub fn web_scan(
 }
 
 // ---------------------------------------------------------------------------
-// 18. web_execute_js (stub)
+// 19. web_execute_js (stub)
 // ---------------------------------------------------------------------------
 
 pub fn web_execute_js(
@@ -1342,11 +1547,10 @@ fn computer_open_macos(
     std::thread::sleep(Duration::from_millis(800));
 
     let timeout_ms = wait_timeout_ms.unwrap_or(5000).clamp(500, 20000);
-    let mut frontmost = None;
     let mut verified_frontmost = false;
     let mut warning: Option<String> = None;
 
-    if let Some(application) = application.as_deref() {
+    let frontmost = if let Some(application) = application.as_deref() {
         // Attempt to activate (requires macOS Automation permission – best-effort).
         if let Err(e) = activate_application_macos(application) {
             warning = Some(format!("activate warning: {e:#}"));
@@ -1354,17 +1558,17 @@ fn computer_open_macos(
         // Poll for frontmost – best-effort, do NOT error out on timeout.
         match wait_for_frontmost_application_macos(application, timeout_ms) {
             Ok(f) => {
-                frontmost = Some(f);
                 verified_frontmost = true;
+                Some(f)
             }
             Err(_) => {
                 // App may still be open; just report what is currently frontmost.
-                frontmost = frontmost_application_macos().ok();
+                frontmost_application_macos().ok()
             }
         }
     } else {
-        frontmost = frontmost_application_macos().ok();
-    }
+        frontmost_application_macos().ok()
+    };
 
     let mut result = json!({
         "status": "ok",
@@ -1915,9 +2119,39 @@ fn computer_action_windows(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, MutexGuard};
+
+    lazy_static::lazy_static! {
+        static ref TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+    }
+
+    struct TestEnvGuard {
+        _guard: MutexGuard<'static, ()>,
+        original_cwd: PathBuf,
+    }
+
+    impl Drop for TestEnvGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original_cwd);
+            crate::workspace::reset_for_tests();
+        }
+    }
+
+    fn test_env_guard() -> TestEnvGuard {
+        let guard = TEST_ENV_LOCK.lock().unwrap();
+        let original_cwd = std::env::current_dir().unwrap();
+        crate::workspace::reset_for_tests();
+        fs::create_dir_all("temp").unwrap();
+        TestEnvGuard {
+            _guard: guard,
+            original_cwd,
+        }
+    }
 
     #[test]
     fn test_sequence_matcher_ratio() {
+        let _guard = test_env_guard();
         let r = SequenceMatcher::ratio("hello_world.txt", "hello_world.rs");
         assert!(r > 0.6);
         let r2 = SequenceMatcher::ratio("foo", "bar");
@@ -1926,6 +2160,7 @@ mod tests {
 
     #[test]
     fn test_smart_format_truncates() {
+        let _guard = test_env_guard();
         let long = "a".repeat(9000);
         let data = json!({ "key": long });
         let out = smart_format(&data, Some(8000), None);
@@ -1933,7 +2168,25 @@ mod tests {
     }
 
     #[test]
+    fn test_smart_format_truncates_multibyte_without_panicking() {
+        let _guard = test_env_guard();
+        let long = "场".repeat(5000);
+        let data = json!({ "key": long });
+        let out = smart_format(&data, Some(4000), None);
+        assert!(out.contains("TRUNCATED"));
+    }
+
+    #[test]
+    fn test_truncate_line_truncates_multibyte_without_panicking() {
+        let _guard = test_env_guard();
+        let line = format!("prefix-{}-suffix", "场".repeat(300));
+        let out = truncate_line(&line, 80);
+        assert!(out.contains("TRUNCATED"));
+    }
+
+    #[test]
     fn test_expand_file_refs() {
+        let _guard = test_env_guard();
         // just test no-panic on missing file
         let result = expand_file_refs("{{file:/nonexistent_path_xyz}}", None);
         // missing files are silently skipped
@@ -1942,6 +2195,7 @@ mod tests {
 
     #[test]
     fn test_expand_file_refs_handles_empty_file_range() {
+        let _guard = test_env_guard();
         let tmp = "temp/test_expand_empty.txt";
         let _ = file_write(tmp, "", Some("overwrite"));
         let result = expand_file_refs(&format!("{{{{file:{tmp}:2:4}}}}"), None).unwrap();
@@ -1951,6 +2205,7 @@ mod tests {
 
     #[test]
     fn test_file_write_and_read() {
+        let _guard = test_env_guard();
         let tmp = "temp/test_tools_write.txt";
         let _ = file_write(tmp, "hello world", Some("overwrite"));
         let out = file_read(tmp, None, None, None, Some(false)).unwrap();
@@ -1960,6 +2215,7 @@ mod tests {
 
     #[test]
     fn test_file_patch_unique() {
+        let _guard = test_env_guard();
         let tmp = "temp/test_tools_patch.txt";
         let _ = file_write(tmp, "aaa\nbbb\nccc", Some("overwrite"));
         let r = file_patch(tmp, "bbb", "BBB").unwrap();
@@ -1971,6 +2227,7 @@ mod tests {
 
     #[test]
     fn test_file_patch_nonunique() {
+        let _guard = test_env_guard();
         let tmp = "temp/test_tools_patch2.txt";
         let _ = file_write(tmp, "aaa\naaa\nbbb", Some("overwrite"));
         let r = file_patch(tmp, "aaa", "AAA").unwrap();
@@ -1981,6 +2238,7 @@ mod tests {
 
     #[test]
     fn test_consume_file() {
+        let _guard = test_env_guard();
         let dir = "temp";
         let file = "test_consume.txt";
         let _ = file_write("temp/test_consume.txt", "consumed", Some("overwrite"));
@@ -1991,12 +2249,14 @@ mod tests {
 
     #[test]
     fn test_ask_user() {
+        let _guard = test_env_guard();
         let r = ask_user("Are you sure?", None);
         assert_eq!(r["status"], "INTERRUPT");
     }
 
     #[test]
     fn test_format_error() {
+        let _guard = test_env_guard();
         let e = anyhow!("outer").context("inner");
         let s = format_error(&e);
         assert!(s.contains("outer"));
@@ -2005,6 +2265,7 @@ mod tests {
 
     #[test]
     fn test_smart_format_deep_nested() {
+        let _guard = test_env_guard();
         let mut v = json!(null);
         for _ in 0..21 {
             v = json!({ "nested": v });
@@ -2015,6 +2276,7 @@ mod tests {
 
     #[test]
     fn test_web_stubs() {
+        let _guard = test_env_guard();
         let r = web_scan(Some(true), None, None).unwrap();
         assert_eq!(r["status"], "ok");
         let r = web_execute_js("console.log(1)", None, None).unwrap();
@@ -2023,6 +2285,7 @@ mod tests {
 
     #[test]
     fn test_git_status_no_repo() {
+        let _guard = test_env_guard();
         // Should not panic, may return error or empty
         let r = git_status(Some("nonexistent_dir"));
         // Expect error since dir doesn't exist
@@ -2031,6 +2294,7 @@ mod tests {
 
     #[test]
     fn test_file_read_keyword() {
+        let _guard = test_env_guard();
         let tmp = "temp/test_tools_kw.txt";
         let _ = file_write(tmp, "line one\nline two\nline three\n", Some("overwrite"));
         let out = file_read(tmp, None, Some("two"), None, Some(true)).unwrap();
@@ -2041,6 +2305,7 @@ mod tests {
 
     #[test]
     fn test_file_read_blocks_outside_root() {
+        let _guard = test_env_guard();
         let external = std::env::temp_dir().join("generic_coder_tools_outside_read.txt");
         let _ = fs::write(&external, "outside");
         let err = file_read(&external.display().to_string(), None, None, None, Some(false))
@@ -2052,6 +2317,7 @@ mod tests {
 
     #[test]
     fn test_file_write_blocks_outside_root() {
+        let _guard = test_env_guard();
         let external = std::env::temp_dir().join("generic_coder_tools_outside_write.txt");
         let err = file_write(&external.display().to_string(), "outside", Some("overwrite"))
             .unwrap_err()
@@ -2061,6 +2327,7 @@ mod tests {
 
     #[test]
     fn test_resolve_search_root_from_uses_base_for_relative_paths() {
+        let _guard = test_env_guard();
         let root = PathBuf::from("temp/test code run spaces");
         let base = root.join("runner cwd");
         let nested = base.join("child dir");
@@ -2074,6 +2341,7 @@ mod tests {
 
     #[test]
     fn test_resolve_search_root_from_defaults_to_base() {
+        let _guard = test_env_guard();
         let base = PathBuf::from("temp/test code run default");
         fs::create_dir_all(&base).unwrap();
 
@@ -2084,7 +2352,92 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_local_path_uses_active_workspace_root() {
+        let _guard = test_env_guard();
+        let original_cwd = std::env::current_dir().unwrap();
+        let root = fs::canonicalize("temp").unwrap();
+        let workspace_root = root.join("test active workspace root");
+        let outside_cwd = root.join("test active workspace outside");
+        let file_path = workspace_root.join("nested/example.txt");
+
+        fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(&outside_cwd).unwrap();
+        fs::write(&file_path, "ok").unwrap();
+
+        let workspace_name = format!("test-ws-{}", timestamp());
+        let opened = crate::workspace::open_folder(
+            &workspace_root.display().to_string(),
+            &workspace_name,
+        );
+        assert_eq!(opened["status"], "success");
+
+        std::env::set_current_dir(&outside_cwd).unwrap();
+
+        let resolved = resolve_local_path("nested/example.txt", false).unwrap();
+        assert_eq!(resolved, fs::canonicalize(&file_path).unwrap());
+
+        std::env::set_current_dir(original_cwd).unwrap();
+        let _ = fs::remove_dir_all(&workspace_root);
+        let _ = fs::remove_dir_all(&outside_cwd);
+    }
+
+    #[test]
+    fn test_effective_root_falls_back_after_closing_explicit_workspace() {
+        let _guard = test_env_guard();
+        let repo_root = fs::canonicalize(".").unwrap();
+        let workspace_root = repo_root.join("temp/test close workspace root");
+        fs::create_dir_all(&workspace_root).unwrap();
+
+        let opened = crate::workspace::open_folder(
+            &workspace_root.display().to_string(),
+            "close-workspace-test",
+        );
+        assert_eq!(opened["status"], "success");
+        assert_eq!(
+            crate::workspace::effective_root().unwrap(),
+            fs::canonicalize(&workspace_root).unwrap()
+        );
+
+        let closed = crate::workspace::close_workspace("close-workspace-test");
+        assert_eq!(closed["status"], "success");
+        assert_eq!(crate::workspace::effective_root().unwrap(), repo_root);
+
+        let _ = fs::remove_dir_all(&workspace_root);
+    }
+
+        #[test]
+        fn test_extract_web_title_and_text_from_html() {
+                let _guard = test_env_guard();
+                let body = "<html><head><title>Example Title</title></head><body><h1>Hello</h1><p>World</p></body></html>";
+                let (title, text) = extract_web_title_and_text(body, Some("text/html"));
+                assert_eq!(title.as_deref(), Some("Example Title"));
+                assert!(text.contains("Hello"));
+                assert!(text.contains("World"));
+        }
+
+        #[test]
+        fn test_parse_duckduckgo_results_extracts_items() {
+                let _guard = test_env_guard();
+                let body = r#"
+                <div class="result">
+                    <a class="result__a" href="https://example.com/a">Alpha Result</a>
+                    <a class="result__snippet">Alpha snippet</a>
+                </div>
+                <div class="result">
+                    <a class="result__a" href="https://example.com/b">Beta Result</a>
+                    <a class="result__snippet">Beta snippet</a>
+                </div>
+                "#;
+
+                let results = parse_duckduckgo_results(body, 10);
+                assert_eq!(results.len(), 2);
+                assert_eq!(results[0]["title"], "Alpha Result");
+                assert_eq!(results[1]["url"], "https://example.com/b");
+        }
+
+    #[test]
     fn test_normalize_application_name_maps_common_aliases() {
+        let _guard = test_env_guard();
         assert_eq!(normalize_application_name("chrome"), "Google Chrome");
         assert_eq!(normalize_application_name("Google Chrome.app"), "Google Chrome");
         assert_eq!(normalize_application_name("vscode"), "Visual Studio Code");
@@ -2092,6 +2445,7 @@ mod tests {
 
     #[test]
     fn test_application_names_match_uses_normalized_aliases() {
+        let _guard = test_env_guard();
         assert!(application_names_match("Google Chrome", "chrome"));
         assert!(application_names_match("Visual Studio Code", "code"));
         assert!(!application_names_match("Safari", "Firefox"));
@@ -2099,6 +2453,7 @@ mod tests {
 
     #[test]
     fn test_file_read_empty_file_and_large_start() {
+        let _guard = test_env_guard();
         let tmp = "temp/test_tools_empty.txt";
         let _ = file_write(tmp, "", Some("overwrite"));
         let out = file_read(tmp, Some(999), None, Some(20), Some(true)).unwrap();
@@ -2108,15 +2463,41 @@ mod tests {
 
     #[test]
     fn test_file_revert_none() {
+        let _guard = test_env_guard();
         let r = file_revert("nonexistent_file_xyz_123", None).unwrap();
         assert_eq!(r["status"], "error");
     }
 
     #[test]
     fn test_backup_path_encoding() {
+        let _guard = test_env_guard();
         let bp = backup_path("src\\main.rs", Some("task1")).unwrap();
         let s = bp.to_string_lossy();
         assert!(s.contains("_FS_"));
         assert!(s.contains("task1"));
+    }
+
+    #[test]
+    fn test_code_run_uses_resolved_code_cwd() {
+        let _guard = test_env_guard();
+        let root = PathBuf::from("temp/test_code_run_cwd");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+
+        let result = code_run(
+            "pwd && printf 'ok' > created.txt",
+            "bash",
+            Some(5),
+            Some(&root.display().to_string()),
+            Some("nested"),
+            None,
+        )
+        .unwrap();
+
+        let stdout = result["stdout"].as_str().unwrap_or("");
+        assert!(stdout.contains(&fs::canonicalize(&nested).unwrap().display().to_string()));
+        assert_eq!(fs::read_to_string(nested.join("created.txt")).unwrap(), "ok");
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

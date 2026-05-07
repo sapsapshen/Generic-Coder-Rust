@@ -7,6 +7,25 @@ use ratatui::{
 
 use crate::app::App;
 
+const DEEPSEEK_PRICING: &[(&str, f64, f64, f64)] = &[
+    ("deepseek-v4-pro",     0.003625, 0.435, 0.87),
+    ("deepseek-v4-flash",   0.0028,   0.14,  0.28),
+    ("deepseek-reasoner",   0.003625, 0.435, 0.87),
+    ("deepseek-chat",       0.0028,   0.14,  0.28),
+];
+
+fn estimate_cost(model: &str, prompt: u64, completion: u64, cached: u64) -> Option<String> {
+    let lm = model.to_lowercase();
+    let (_, cache_hit, cache_miss, out) = DEEPSEEK_PRICING
+        .iter()
+        .find(|(name, ..)| lm.contains(name))?;
+    let miss = prompt.saturating_sub(cached) as f64;
+    let cost = (cached as f64 / 1_000_000.0) * cache_hit
+        + (miss / 1_000_000.0) * cache_miss
+        + (completion as f64 / 1_000_000.0) * out;
+    Some(if cost < 0.001 { "<$0.001".into() } else { format!("${:.4}", cost) })
+}
+
 /// Draw the bottom status bar
 pub fn draw(
     frame: &mut Frame,
@@ -40,22 +59,53 @@ pub fn draw(
     ])
     .split(inner);
 
-    // Left: status message
+    // Left: status message + token/cost after last task
+    let active_model = app
+        .auto_route
+        .as_ref()
+        .map(|route| route.model.as_str())
+        .unwrap_or(&app.model_label);
+    let left_text = if let Some((pt, ct, ca)) = app.last_usage {
+        let cost_str = estimate_cost(active_model, pt, ct, ca)
+            .map(|c| format!(" {c}"))
+            .unwrap_or_default();
+        let session_cost = estimate_cost(
+            active_model,
+            app.session_usage.prompt_tokens,
+            app.session_usage.completion_tokens,
+            app.session_usage.cached_tokens,
+        )
+        .map(|c| format!(" session:{c}"))
+        .unwrap_or_default();
+        format!("{status_text}  ↑{pt} ↓{ct}💾{ca}{cost_str}{session_cost}")
+    } else {
+        status_text.to_string()
+    };
+
     frame.render_widget(
-        Paragraph::new(Span::styled(status_text, Style::default().fg(status_color))),
+        Paragraph::new(Span::styled(left_text, Style::default().fg(status_color))),
         chunks[0],
     );
 
-    // Right: key hints
+    // Right: mode | effort | yolo | key hints
     let mode_hint = match app.current_mode {
         generic_coder::workflow::AgentMode::Work => "Work",
         generic_coder::workflow::AgentMode::Plan => "Plan",
         generic_coder::workflow::AgentMode::Review => "Review",
     };
 
+    let effort_hint = app
+        .auto_route
+        .as_ref()
+        .and_then(|route| route.reasoning_effort.as_deref())
+        .or(app.reasoning_effort.as_deref())
+        .unwrap_or("default");
+    let yolo_hint = if app.yolo_enabled { " | YOLO⚡" } else { "" };
+    let auto_hint = if app.auto_model_enabled { " | Auto" } else { "" };
+
     let right_text = format!(
-        "{} | Ctrl+S:Settings | Ctrl+W:Sidebar | Ctrl+Q:Quit",
-        mode_hint
+        "{} | Effort:{}{}{} | Ctrl+S:Settings | Ctrl+W:Sidebar | Ctrl+Q:Quit",
+        mode_hint, effort_hint, auto_hint, yolo_hint
     );
     frame.render_widget(
         Paragraph::new(Span::styled(right_text, Style::default().fg(text_dim)))

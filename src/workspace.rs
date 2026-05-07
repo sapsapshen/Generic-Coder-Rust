@@ -341,6 +341,7 @@ pub struct WorkspaceManager {
     active_workspace: String,
     workspaces: HashMap<String, WorkspaceInfo>,
     tree_builder: FileTreeBuilder,
+    session_workspace_explicit: bool,
 }
 
 impl WorkspaceManager {
@@ -349,6 +350,7 @@ impl WorkspaceManager {
             active_workspace: String::new(),
             workspaces: HashMap::new(),
             tree_builder: FileTreeBuilder::default(),
+            session_workspace_explicit: false,
         };
         mgr._load_state();
         mgr
@@ -420,6 +422,47 @@ impl WorkspaceManager {
         }
     }
 
+    fn current_process_root(&self) -> Option<PathBuf> {
+        if let Ok(path) = std::env::var("GENERIC_CODER_PROJECT_DIR") {
+            let path = PathBuf::from(path);
+            if path.is_dir() {
+                return Some(fs::canonicalize(&path).unwrap_or(path));
+            }
+        }
+
+        std::env::current_dir().ok().map(|path| {
+            fs::canonicalize(&path).unwrap_or(path)
+        })
+    }
+
+    fn active_workspace_root(&self) -> Option<PathBuf> {
+        let active = self.get_active_workspace();
+        let ws_path = active.get("path").and_then(|value| value.as_str())?;
+        fs::canonicalize(ws_path).ok()
+    }
+
+    pub fn effective_root(&self) -> Option<PathBuf> {
+        let current_root = self.current_process_root();
+        let active_root = self.active_workspace_root();
+
+        if self.session_workspace_explicit {
+            return active_root.or(current_root);
+        }
+
+        match (current_root, active_root) {
+            (Some(current_root), Some(active_root)) => {
+                if current_root.starts_with(&active_root) {
+                    Some(active_root)
+                } else {
+                    Some(current_root)
+                }
+            }
+            (Some(current_root), None) => Some(current_root),
+            (None, Some(active_root)) => Some(active_root),
+            (None, None) => None,
+        }
+    }
+
     // ── workspace lifecycle ────────────────────────────────────
 
     pub fn open_folder(&mut self, path: &str, name: &str) -> JsonResult {
@@ -448,6 +491,7 @@ impl WorkspaceManager {
             },
         );
         self.active_workspace = name.clone();
+        self.session_workspace_explicit = true;
         self._save_state();
 
         let tree = self.tree_builder.build_tree(&abs, 3, 0, 500);
@@ -465,10 +509,16 @@ impl WorkspaceManager {
             return serde_json::json!({"status": "error", "msg": format!("Workspace \"{}\" not open", target)});
         }
 
+        let removed_active = self.active_workspace == target;
         self.workspaces.remove(&target);
 
-        if self.active_workspace == target {
+        if removed_active {
             self.active_workspace = self.workspaces.keys().next().cloned().unwrap_or_default();
+            self.session_workspace_explicit = false;
+        }
+
+        if self.workspaces.is_empty() {
+            self.session_workspace_explicit = false;
         }
         self._save_state();
 
@@ -481,6 +531,7 @@ impl WorkspaceManager {
         }
 
         self.active_workspace = name.to_string();
+        self.session_workspace_explicit = true;
         self._save_state();
 
         let ws = &self.workspaces[name];
@@ -824,4 +875,57 @@ pub fn delete_item(path: &str) -> JsonResult {
 
 pub fn move_item(src: &str, dst: &str) -> JsonResult {
     WM.lock().move_item(src, dst)
+}
+
+pub fn effective_root() -> Option<PathBuf> {
+    WM.lock().effective_root()
+}
+
+#[cfg(test)]
+pub fn reset_for_tests() {
+    let mut wm = WM.lock();
+    *wm = WorkspaceManager {
+        active_workspace: String::new(),
+        workspaces: HashMap::new(),
+        tree_builder: FileTreeBuilder::default(),
+        session_workspace_explicit: false,
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    static ENV_LOCK: StdMutex<()> = StdMutex::new(());
+
+    #[test]
+    fn current_process_root_prefers_project_dir_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let temp = std::env::temp_dir().join(format!(
+            "generic-coder-project-root-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&temp).unwrap();
+
+        let original = std::env::var("GENERIC_CODER_PROJECT_DIR").ok();
+        std::env::set_var("GENERIC_CODER_PROJECT_DIR", &temp);
+
+        let manager = WorkspaceManager {
+            active_workspace: String::new(),
+            workspaces: HashMap::new(),
+            tree_builder: FileTreeBuilder::default(),
+            session_workspace_explicit: false,
+        };
+
+        assert_eq!(manager.current_process_root().unwrap(), fs::canonicalize(&temp).unwrap());
+
+        if let Some(value) = original {
+            std::env::set_var("GENERIC_CODER_PROJECT_DIR", value);
+        } else {
+            std::env::remove_var("GENERIC_CODER_PROJECT_DIR");
+        }
+        let _ = fs::remove_dir_all(&temp);
+    }
 }

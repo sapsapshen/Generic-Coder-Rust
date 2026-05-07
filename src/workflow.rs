@@ -139,9 +139,7 @@ impl Workflow {
     pub fn reset(&mut self) {
         self.active = false;
         self.current_node = 0;
-        for node in &mut self.nodes {
-            node.completed = false;
-        }
+        self.nodes.clear();
     }
 
     pub fn set_active(&mut self, nodes: Vec<WorkflowNode>) {

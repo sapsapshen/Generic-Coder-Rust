@@ -62,6 +62,8 @@ const SMART_HISTORY_STOPWORDS: &[&str] = &[
 
 lazy_static::lazy_static! {
     static ref THINK_TAG_RE: Regex = Regex::new(r"<think(?:ing)?>(.*?)</think(?:ing)?>").unwrap();
+    static ref SUMMARY_TAG_RE: Regex = Regex::new(r"(?s)<summary>[\s\S]*?(?:</summary>|$)").unwrap();
+    static ref TOOL_PROTOCOL_TAG_RE: Regex = Regex::new(r"(?s)<(?:tool_use|tool_call)>[\s\S]*?(?:</_?(?:tool_use|tool_call)>|$)").unwrap();
     static ref RESP_CACHE_KEY: String = Uuid::new_v4().to_string();
 }
 
@@ -116,6 +118,138 @@ pub fn tryparse_json(raw: &str) -> Result<Value, serde_json::Error> {
         return serde_json::from_str(truncated);
     }
     serde_json::from_str(raw)
+}
+
+fn sanitize_protocol_text(text: &str) -> String {
+    let mut cleaned = TOOL_PROTOCOL_TAG_RE.replace_all(text, "").to_string();
+    cleaned = SUMMARY_TAG_RE.replace_all(&cleaned, "").to_string();
+    cleaned = strip_legacy_protocol_tags(&cleaned);
+    cleaned = strip_dsml_protocol_tags(&cleaned);
+    for marker in [
+        "<summary>",
+        "</summary>",
+        "<tool_use>",
+        "</tool_use>",
+        "</_tool_use>",
+        "<tool_call>",
+        "</tool_call>",
+        "</_tool_call>",
+    ] {
+        cleaned = cleaned.replace(marker, "");
+    }
+    cleaned
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn is_legacy_tool_tag(tag: &str) -> bool {
+    !matches!(
+        tag,
+        "summary"
+            | "thinking"
+            | "think"
+            | "tool_use"
+            | "tool_call"
+            | "tool_result"
+            | "file_content"
+            | "history"
+            | "key_info"
+    ) && tag.contains('_')
+}
+
+fn strip_legacy_protocol_tags(text: &str) -> String {
+    let legacy_tag_re = Regex::new(
+        r"(?s)<([a-z][a-z0-9_]*_[a-z0-9_]*)>([\s\S]*?)</([a-z][a-z0-9_]*_[a-z0-9_]*)>",
+    )
+    .unwrap();
+
+    legacy_tag_re
+        .replace_all(text, |caps: &regex::Captures| {
+            let open = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let close = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+            if open == close && (is_legacy_tool_tag(open) || open == "file_content") {
+                String::new()
+            } else {
+                caps.get(0)
+                    .map(|m| m.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            }
+        })
+        .to_string()
+}
+
+fn strip_dsml_protocol_tags(text: &str) -> String {
+    let dsml_re = Regex::new(r"(?s)<｜｜DSML｜｜tool_calls>[\s\S]*?</｜｜DSML｜｜tool_calls>").unwrap();
+    dsml_re.replace_all(text, "").to_string()
+}
+
+fn parse_dsml_tool_calls(content: &str) -> Vec<ToolCall> {
+    let invoke_re = Regex::new(
+        r#"(?s)<｜｜DSML｜｜invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)</｜｜DSML｜｜invoke>"#,
+    )
+    .unwrap();
+    let param_re = Regex::new(
+        r#"(?s)<｜｜DSML｜｜parameter\s+name="([^"]+)"(?:\s+string="([^"]+)")?[^>]*>([\s\S]*?)</｜｜DSML｜｜parameter>"#,
+    )
+    .unwrap();
+
+    invoke_re
+        .captures_iter(content)
+        .filter_map(|invoke_caps| {
+            let name = invoke_caps.get(1)?.as_str().trim();
+            if name.is_empty() {
+                return None;
+            }
+            let body = invoke_caps.get(2)?.as_str();
+            let mut args = serde_json::Map::new();
+            for param_caps in param_re.captures_iter(body) {
+                let Some(key) = param_caps.get(1).map(|m| m.as_str().trim()) else {
+                    continue;
+                };
+                if key.is_empty() {
+                    continue;
+                }
+                let string_hint = param_caps.get(2).map(|m| m.as_str()).unwrap_or("false");
+                let raw_value = param_caps
+                    .get(3)
+                    .map(|m| m.as_str().trim())
+                    .unwrap_or_default();
+                let value = if string_hint.eq_ignore_ascii_case("true") {
+                    Value::String(raw_value.to_string())
+                } else {
+                    serde_json::from_str(raw_value)
+                        .unwrap_or_else(|_| Value::String(raw_value.to_string()))
+                };
+                args.insert(key.to_string(), value);
+            }
+            Some(ToolCall {
+                id: String::new(),
+                name: name.to_string(),
+                arguments: Value::Object(args),
+            })
+        })
+        .collect()
+}
+
+fn normalize_chat_reasoning_effort(cfg: &LlmConfig) -> Option<String> {
+    let effort = cfg.reasoning_effort.as_ref()?.trim().to_ascii_lowercase();
+    let base = cfg.apibase.trim().to_ascii_lowercase();
+    let model = cfg.model.trim().to_ascii_lowercase();
+    let is_deepseek = base.contains("deepseek") || model.contains("deepseek");
+
+    if is_deepseek {
+        return Some(match effort.as_str() {
+            "off" => "low".to_string(),
+            other => other.to_string(),
+        });
+    }
+
+    Some(effort)
 }
 
 fn try_parse_tool_args(raw: &str) -> Vec<Value> {
@@ -318,17 +452,18 @@ fn compress_history_tags(messages: &mut [Value], keep_recent: usize, max_len: us
     }
 
     let tags: &[&str] = &["thinking", "think", "tool_use", "tool_result"];
-    let tag_patterns: Vec<(Regex, Regex)> = tags
+    let tag_patterns: Vec<(Regex, Regex, &str)> = tags
         .iter()
         .map(|tag| {
             (
-                Regex::new(&format!(r"<{}>", tag)).unwrap(),
+                Regex::new(&format!(r"<{}(?:\s[^>]*)?>", tag)).unwrap(),
                 Regex::new(&format!(r"</{}>", tag)).unwrap(),
+                *tag,
             )
         })
         .collect();
-
-    let hist_pat = Regex::new(r"<(history|key_info)>[\s\S]*?</\1>").unwrap();
+    let history_pat = Regex::new(r"<history>[\s\S]*?</history>").unwrap();
+    let key_info_pat = Regex::new(r"<key_info>[\s\S]*?</key_info>").unwrap();
 
     let trunc_str = |s: &str| -> String {
         if s.len() <= max_len {
@@ -355,14 +490,18 @@ fn compress_history_tags(messages: &mut [Value], keep_recent: usize, max_len: us
         let content = msg.get("content").cloned();
         match content {
             Some(Value::String(ref s)) => {
-                let mut text = hist_pat
-                    .replace_all(s, |caps: &regex::Captures| {
-                        format!("<{}>[...]</{}>", &caps[1], &caps[1])
-                    })
+                let mut text = history_pat
+                    .replace_all(s, "<history>[...]</history>")
                     .to_string();
-                for (open_re, _close_re) in &tag_patterns {
-                    text = open_re
-                        .replace_all(&text, |caps: &regex::Captures| format!("<{}>", &caps[1]))
+                text = key_info_pat
+                    .replace_all(&text, "<key_info>[...]</key_info>")
+                    .to_string();
+                for (open_re, close_re, tag) in &tag_patterns {
+                    let normalized_open = format!("<{tag}>");
+                    let normalized_close = format!("</{tag}>");
+                    text = open_re.replace_all(&text, normalized_open.as_str()).to_string();
+                    text = close_re
+                        .replace_all(&text, normalized_close.as_str())
                         .to_string();
                 }
                 let truncated = trunc_str(&text);
@@ -1924,7 +2063,7 @@ impl BaseSession for OaiSession {
                 };
                 p[key] = json!(mt);
             }
-            if let Some(ref effort) = self.config.reasoning_effort {
+            if let Some(effort) = normalize_chat_reasoning_effort(&self.config) {
                 p["reasoning_effort"] = json!(effort);
             }
             (u, p)
@@ -2558,7 +2697,7 @@ impl ToolClient {
 
         // (?s) enables dot-all mode so `.` matches newlines — required for multi-line <tool_use> blocks
         let tool_re = Regex::new(
-            r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</(?:tool_use|tool_call)>",
+            r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</_?(?:tool_use|tool_call)>",
         )
         .unwrap();
         let tool_all: Vec<String> = tool_re
@@ -2576,7 +2715,10 @@ impl ToolClient {
         } else if remaining.contains("<tool_use>") {
             // Fallback: extract content between <tool_use> and </tool_use> (or end of string)
             let after_tag = remaining.split("<tool_use>").last().unwrap_or("");
-            let weak = if let Some(close_pos) = after_tag.find("</tool_use>") {
+            let weak = if let Some(close_pos) = after_tag
+                .find("</tool_use>")
+                .or_else(|| after_tag.find("</_tool_use>"))
+            {
                 after_tag[..close_pos].trim().to_string()
             } else {
                 after_tag.trim().to_string()
@@ -2590,8 +2732,13 @@ impl ToolClient {
                 }
             }
             if !weak.is_empty() {
-                remaining = remaining.replace(&format!("<tool_use>{}", after_tag.split("</tool_use>").next().unwrap_or("")), "");
+                let tool_body = after_tag
+                    .split("</tool_use>")
+                    .next()
+                    .unwrap_or(after_tag.split("</_tool_use>").next().unwrap_or(""));
+                remaining = remaining.replace(&format!("<tool_use>{}", tool_body), "");
                 remaining = remaining.replace("</tool_use>", "");
+                remaining = remaining.replace("</_tool_use>", "");
             }
         } else if remaining.contains("\"name\":") && remaining.contains("\"arguments\":") {
             let json_re = Regex::new("(?s)\\{.*\"name\".*\\}").unwrap();
@@ -2600,6 +2747,11 @@ impl ToolClient {
                 json_strs.push(s.clone());
                 remaining = remaining.replace(&s, "").trim().to_string();
             }
+        }
+
+        if remaining.contains("<｜｜DSML｜｜tool_calls>") {
+            tool_calls.extend(parse_dsml_tool_calls(&remaining));
+            remaining = strip_dsml_protocol_tags(&remaining);
         }
 
         for json_str in &json_strs {
@@ -2641,7 +2793,7 @@ impl ToolClient {
             }
         }
 
-        let content = remaining.trim().to_string();
+        let content = sanitize_protocol_text(&remaining);
 
         let has_tools = !tool_calls.is_empty();
         LlmResponse {
@@ -2927,7 +3079,7 @@ pub fn parse_text_tool_calls(content: &str) -> (Vec<ToolCall>, String) {
                             arguments: b.get("input").cloned().unwrap_or(Value::Null),
                         })
                         .collect();
-                    return (tcs, remaining[..pos].trim().to_string());
+                    return (tcs, sanitize_protocol_text(&remaining[..pos]));
                 }
             }
         }
@@ -2935,7 +3087,7 @@ pub fn parse_text_tool_calls(content: &str) -> (Vec<ToolCall>, String) {
 
     // Try XML tags — (?s) enables dot-all so multi-line blocks are matched
     let tool_re = Regex::new(
-        r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</(?:tool_use|tool_call)>",
+        r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</_?(?:tool_use|tool_call)>",
     )
     .unwrap();
     for caps in tool_re.captures_iter(&remaining) {
@@ -2958,8 +3110,36 @@ pub fn parse_text_tool_calls(content: &str) -> (Vec<ToolCall>, String) {
         }
     }
 
-    let remaining = tool_re.replace_all(&remaining, "").trim().to_string();
-    (tcs, remaining)
+    let legacy_tool_re = Regex::new(
+        r"(?s)<([a-z][a-z0-9_]*_[a-z0-9_]*)>([\s\S]{2,}?)</([a-z][a-z0-9_]*_[a-z0-9_]*)>",
+    )
+    .unwrap();
+    for caps in legacy_tool_re.captures_iter(&remaining) {
+        let open = caps.get(1).unwrap().as_str();
+        let close = caps.get(3).unwrap().as_str();
+        if open != close || !is_legacy_tool_tag(open) {
+            continue;
+        }
+        let s = caps.get(2).unwrap().as_str().trim();
+        if let Ok(d) = tryparse_json(s) {
+            let args = d
+                .get("arguments")
+                .or(d.get("args"))
+                .or(d.get("input"))
+                .cloned()
+                .unwrap_or(d);
+            tcs.push(ToolCall {
+                id: String::new(),
+                name: open.to_string(),
+                arguments: args,
+            });
+        }
+    }
+
+    tcs.extend(parse_dsml_tool_calls(&remaining));
+
+    let remaining = tool_re.replace_all(&remaining, "").to_string();
+    (tcs, sanitize_protocol_text(&remaining))
 }
 
 #[cfg(test)]
@@ -2992,6 +3172,90 @@ mod tests {
         )
         .unwrap();
         assert_eq!(v["name"], "test");
+    }
+
+    #[test]
+    fn test_sanitize_protocol_text_removes_internal_tags() {
+        let raw = "<summary>Inspect README</summary>\nAnswer body\n<tool_use>{\"name\":\"file_read\",\"arguments\":{\"path\":\"README.md\"}}</tool_use>";
+        assert_eq!(sanitize_protocol_text(raw), "Answer body");
+    }
+
+    #[test]
+    fn test_parse_text_tool_calls_strips_summary_from_visible_content() {
+        let raw = "<summary>Read local README</summary>\nVisible answer\n<tool_use>{\"name\":\"file_read\",\"arguments\":{\"path\":\"README.md\"}}</tool_use>";
+        let (tool_calls, content) = parse_text_tool_calls(raw);
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(content, "Visible answer");
+    }
+
+    #[test]
+    fn test_sanitize_protocol_text_removes_unclosed_tool_block() {
+        let raw = "Working\n<tool_use>{\"name\":\"file_read\",\"arguments\":{\"path\":\"README.md\"}}";
+        assert_eq!(sanitize_protocol_text(raw), "Working");
+    }
+
+    #[test]
+    fn test_sanitize_protocol_text_removes_malformed_tool_close_tag() {
+        let raw = "Working\n<tool_use>{\"name\":\"file_read\",\"arguments\":{\"path\":\"README.md\"}}</_tool_use>";
+        assert_eq!(sanitize_protocol_text(raw), "Working");
+    }
+
+    #[test]
+    fn test_sanitize_protocol_text_removes_legacy_tool_and_file_content_tags() {
+        let raw = "Visible answer\n<file_write>{\"path\":\"README.md\",\"mode\":\"overwrite\"}</file_write>\n<file_content>Hello</file_content>";
+        assert_eq!(sanitize_protocol_text(raw), "Visible answer");
+    }
+
+    #[test]
+    fn test_parse_text_tool_calls_supports_legacy_tool_tags() {
+        let raw = "Visible answer\n<file_write>{\"path\":\"README.md\",\"mode\":\"overwrite\"}</file_write>\n<file_content>Hello</file_content>";
+        let (tool_calls, content) = parse_text_tool_calls(raw);
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].name, "file_write");
+        assert_eq!(tool_calls[0].arguments["path"], "README.md");
+        assert_eq!(content, "Visible answer");
+    }
+
+    #[test]
+    fn test_sanitize_protocol_text_removes_dsml_tool_calls() {
+        let raw = "Visible answer\n<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"code_run\"><｜｜DSML｜｜parameter name=\"command\" string=\"true\">echo ok</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>";
+        assert_eq!(sanitize_protocol_text(raw), "Visible answer");
+    }
+
+    #[test]
+    fn test_parse_text_tool_calls_supports_dsml_tool_calls() {
+        let raw = "Visible answer\n<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name=\"code_run\">\n<｜｜DSML｜｜parameter name=\"command\" string=\"true\">echo ok</｜｜DSML｜｜parameter>\n<｜｜DSML｜｜parameter name=\"timeout\" string=\"false\">1000</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>";
+        let (tool_calls, content) = parse_text_tool_calls(raw);
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].name, "code_run");
+        assert_eq!(tool_calls[0].arguments["command"], "echo ok");
+        assert_eq!(tool_calls[0].arguments["timeout"], 1000);
+        assert_eq!(content, "Visible answer");
+    }
+
+    #[test]
+    fn test_parse_text_tool_calls_supports_malformed_tool_close_tag() {
+        let raw = "Visible answer\n<tool_use>{\"name\":\"file_read\",\"arguments\":{\"path\":\"README.md\"}}</_tool_use>";
+        let (tool_calls, content) = parse_text_tool_calls(raw);
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].name, "file_read");
+        assert_eq!(tool_calls[0].arguments["path"], "README.md");
+        assert_eq!(content, "Visible answer");
+    }
+
+    #[test]
+    fn test_compress_history_tags_handles_history_and_key_info_blocks() {
+        let mut messages = vec![json!({
+            "role": "assistant",
+            "content": "<history>older context</history>\n<key_info>secret</key_info>\n<thinking level=\"high\">step</thinking>"
+        })];
+
+        compress_history_tags(&mut messages, 0, 400, true);
+
+        let content = messages[0]["content"].as_str().unwrap_or("");
+        assert!(content.contains("<history>[...]</history>"));
+        assert!(content.contains("<key_info>[...]</key_info>"));
+        assert!(content.contains("<thinking>step</thinking>"));
     }
 
     #[test]

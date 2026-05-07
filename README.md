@@ -1,6 +1,6 @@
 # Generic Coder (Rust)
 
-Rust-first local coding cockpit with an Axum backend, browser Web UI, Electron desktop shell, optional TUI, configurable LLM backends, workspace and Git tools, remote SSH support, workflow modes, ACP multi-agent collaboration, One Shot autonomous mode, and optional Computer Use.
+Rust-first local coding cockpit with an Axum backend, browser Web UI, Electron desktop shell, optional TUI, configurable LLM backends, workspace and Git tools, remote SSH support, workflow modes, ACP multi-agent collaboration, One Shot autonomous mode, Computer Use, **built-in provider profiles, Electron installer packaging, and a new Workbench UI**.
 
 **Language / Idioma / 语言:** [中文](#zh) | [English](#en) | [Español](#es)
 
@@ -78,6 +78,8 @@ graph LR
         media[media.rs]
         types[types.rs]
         config[config.rs]
+        provider_profiles[provider_profiles.rs]
+        session_store[session_store.rs]
     end
 
     main --> web
@@ -94,8 +96,83 @@ graph LR
     agent --> media
     web --> agent
     web --> config
+    web --> session_store
     tools --> types
 ```
+
+---
+
+## New Features & Improvements / 新增功能与优化 / Nuevas Funciones y Mejoras
+
+### 🆕 Built-in Provider Profiles
+Quick-select from a curated list of provider presets: DeepSeek Global Flash/Pro, DeepSeek China, Qwen, Kimi, MiniMax, Doubao, Tencent Hunyuan, Baidu Qianfan, Zhipu, OpenAI, Anthropic, and OpenRouter. Each profile comes with pre-configured API base, model name, session type, and reasoning effort.
+
+### 🆕 Session Store
+Persistent session management with save, load, and switch between multiple coding sessions. Session state includes conversation history, workspace context, and model configuration.
+
+### 🆕 Electron Desktop Installer
+Native macOS installers for both arm64 (Apple Silicon) and x64 (Intel) architectures — now available as `.pkg` installers in `ui/dist/`.
+
+### 🆕 Workbench UI (TypeScript/React)
+The Electron GUI now includes a new **Workbench** view built with TypeScript/React. It provides:
+- Workspace tree browser with collapsible sections
+- Chat workspace with conversation management
+- Git diff viewer
+- Workflow builder with drag-and-drop nodes
+- Settings / model configuration panel
+
+### 🆕 Enhanced Computer Use + CDP Bridge
+Upgraded browser automation with CDP bridge extension (`assets/tmwd_cdp_bridge/`) for cross-tab, cross-origin, and HttpOnly cookie management. Includes dialog suppression, file upload handling, and image search.
+
+### 🆕 Autonomous Operation System
+New SOP-based autonomous operation with:
+- Task planning and decomposition
+- Helper utilities for scheduling
+- Configurable agent reflection cycles
+
+### 🆕 Error Memory & Avoidance Hints
+Persistent error memory (`src/error_memory.rs`) tracks repeated failures and provides avoidance hints to the LLM, reducing repetitive mistakes.
+
+### 🆕 Skills Framework
+Extensible skills system with 7 built-in skills:
+- **CLI Anything**: Natural language to shell commands
+- **Brainstorming**: Autonomous decision branching
+- **Code Review**: Systematic code review workflow
+- **Create Skill**: Meta-skill for crafting new agent skills
+- **File Search**: Deep codebase exploration
+- **Self Audit**: Agent self-reflection and improvement
+- **Webfetch**: Web content retrieval and analysis
+
+### 🎨 UI Overhaul (2026-05-07)
+Latest round of UI and interaction refinements:
+
+- **Apple Font System** — Default font stack switched to `-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif`. Title bar, toolbar and all button icons enlarged to **2.5×** (40×40px).
+- **Window Size** — Default window resized to **1440×960** (min 1000×640), matching Claude Code Desktop standards.
+- **Workflow Drag-and-Drop** — Workflow Builder nodes are now draggable; visually connect Work → Plan → Review pipelines.
+- **Token Usage Display** — Model status card in the bottom-left corner aggregates token usage by command and shows real-time stats.
+- **Collapsible Workspace Sidebar** — Workspace file tree is now collapsible with smooth animation, reducing visual clutter.
+- **ArrowUp / ArrowDown Draft Recovery** — Input bar restores previous message drafts on `ArrowUp`/`ArrowDown`, including attachment state.
+- **Inline File Preview** — Clicking a workspace file renders text preview or image preview directly in the session area.
+- **SVG Attachment Icon** — Attachment button switched from emoji to SVG icon for a unified look on desktop.
+- **Chrome Path Auto-Detection** — Computer Use now auto-detects Chrome/Chromium installation path on macOS, Linux, and Windows.
+- **Windows Native Menu Hidden** — Electron desktop shell hides the native menubar on Windows for a cleaner top chrome.
+
+### 🖼️ Screenshots / 截图 / Capturas de pantalla
+
+#### Chat Workspace
+![Chat Workspace](ui/dist/7a0a274f-0534-499f-9bf4-2452becdc9b5.png)
+
+#### Workflow Builder (Drag-and-Drop)
+![Workflow Builder](ui/dist/8647b5f7-abbd-4f87-b33f-7d46b27dddea.png)
+
+#### Workspace Tree (Collapsible)
+![Workspace Tree](ui/dist/d4e9b47c-0590-48f9-8fb6-433a3fbea92c.png)
+
+#### Agent Skills （Pre-or-Post Installed）
+![Agent Skills](ui/dist/da32ce36-171f-4f3f-aba3-469412340eb7.png)
+
+#### Settings / Model Configuration (Provider Profiles)
+![Model Configuration](ui/dist/f38bbac0-399f-446c-adb0-d78532b2ede6.png)
 
 ---
 
@@ -104,6 +181,7 @@ graph LR
 ## 中文
 
 ### 这是什么
+
 现已切换为 **Rust 主实现**。当前仓库更适合把它理解为一个“本地运行的编码工作台”，核心由 Axum 服务承载，再接三种前端：
 
 - **浏览器 Web UI**：默认入口，适合快速启动和配置模型
@@ -120,7 +198,6 @@ graph LR
 - 在需要时启用 ACP 多智能体、One Shot 自主模式、Computer Use
 
 当前推荐入口：
-
 - **Windows 一键启动：** `start-generic-coder.bat`
 - **macOS 一键启动：** `bash start-generic-coder.sh`
 - **命令行启动：** `cargo run -- serve --host 127.0.0.1 --port 8765`
@@ -131,14 +208,18 @@ graph LR
 http://127.0.0.1:8765
 ```
 
-### 最近一轮界面与交互调整 (2026-05-05)
+### 最新 UI 优化 (2026-05-07)
 
-- Electron 桌面界面继续收紧顶部 chrome，统一为更接近 Apple 风格的字体和工具栏层次。
-- Windows 桌面壳会隐藏原生菜单栏，减少顶部干扰。
-- 输入栏支持 `ArrowUp` / `ArrowDown` 恢复上一条草稿，附件状态会一起恢复。
-- 左下角模型状态卡现在会按命令 usage 正确聚合并显示 Tokens 统计。
-- 点击 workspace 文件时，会在 session 区直接显示文本预览，或展示图片预览。
-- 附件按钮已从 emoji 改为 SVG 图标，桌面界面观感更统一。
+- **Apple 字体系统** — 默认字体切换为 `-apple-system` + SF Pro，所有按钮和图标放大 2.5 倍
+- **窗口尺寸** — 默认 1440×960，最小 1000×640
+- **工作流节点拖拽** — Workflow Builder 支持节点拖拽连线，Work → Plan → Review 管道可视化
+- **Token 用量统计** — 左下角模型状态卡按命令正确聚合 Token 使用量
+- **可折叠工作区侧栏** — 工作区文件树可折叠，减少视觉干扰
+- **草稿恢复** — 输入栏 `ArrowUp`/`ArrowDown` 恢复上一条草稿，附件状态一并恢复
+- **文件行内预览** — 点击工作区文件直接在会话区显示文本/图片预览
+- **SVG 附件图标** — 附件按钮从 emoji 改为 SVG 图标
+- **Chrome 路径自动检测** — Computer Use 自动检测 Chrome/Chromium 安装路径
+- **Windows 菜单栏隐藏** — Electron 桌面壳隐藏原生菜单栏，顶部更简洁
 
 ### 当前实现状态
 
@@ -159,160 +240,39 @@ Rust 版本已接管全部运行路径：
 | `src/workspace.rs` | 本地工作区管理 |
 | `src/remote.rs` | SSH 远程环境连接与管理 |
 | `src/media.rs` | 图片/媒体文件处理 |
+| `src/provider_profiles.rs` | 内置提供商预设配置 |
+| `src/session_store.rs` | 会话持久化与切换 |
 | `src/types.rs` | 共享类型定义 |
 | `src/config.rs` | 配置加载与持久化 |
 | `tui/src/` | TUI 终端界面 |
 | `ui/` | Electron 主进程、预加载脚本、构建配置 |
-| `ui/renderer/` | Electron 桌面界面 |
+| `ui/workbench/` | Workbench TypeScript/React 视图 |
 | `assets/generic_coder/` | 浏览器 Web UI 资源 |
 
 ### 已支持的能力
 
 - Rust + Axum Web 服务
 - **Web UI**：浏览器中使用的默认工作台
-- **Electron 桌面 UI**：桌面壳、Apple 风格字体、较轻的顶部 chrome
-- **TUI**：终端原生工作台
+- **Electron 桌面 UI**：桌面壳、Apple 风格字体、2.5× 图标放大、更轻的顶部 chrome
+- **TUI**：终端原生工作台（~2060 行 Rust）
 - 多模型配置、切换与本地持久化
+- 内置 15+ 提供商预设配置（DeepSeek / Qwen / Kimi / MiniMax / Doubao / Hunyuan / Qianfan / Zhipu / OpenAI / Anthropic / OpenRouter）
 - 本地工作区选择、文件树浏览、文件搜索、文本/图片预览
+- 可折叠工作区侧栏
 - Git 变更查看、Diff 预览、回退辅助
 - 远程 SSH 连接与文件/命令操作
 - 图片上传到上下文
-- Work / Plan / Review 三模式工作流
-- ACP 多智能体协作
-- One Shot 自主模式
-- 可插拔技能系统与错误记忆系统
-- Computer Use：截图与鼠标/键盘控制
-- macOS / Windows 桌面打包脚本
-
-### 模型配置
-
-可以通过两种方式配置模型：
-
-1. **推荐：** 启动后在 Web UI 的 **Settings** 中直接填写
-2. 在项目根目录放置 `mykey.json`（参考 `mykey.json.example`）
-
-UI 已内置常见预设，支持直接填写 API Key 使用，包括：
-
-- DeepSeek
-- Qwen / DashScope
-- Kimi / Moonshot
-- MiniMax
-- Doubao / Ark
-- Tencent Hunyuan
-- Baidu Qianfan
-- Zhipu
-- OpenAI / Anthropic / OpenRouter
-
-也支持手动填写：Session type、Base URL、Provider、Model name、API Key。
-
-UI 保存的配置默认写入当前用户目录，不会自动写回仓库文件。
-
-### 快速开始
-
-#### 1. 安装 Rust
-
-```powershell
-rustc --version
-cargo --version
-```
-
-如果没有 Rust，请先安装 [Rustup](https://rustup.rs/)。
-
-#### 2. 获取代码
-
-```bash
-git clone https://github.com/sapsapshen/Generic-Coder-Rust.git
-cd Generic-Coder-Rust
-```
-
-#### 3. 启动
-
-**Windows**
-
-双击：
-
-```text
-start-generic-coder.bat
-```
-
-**macOS / Linux**
-
-```bash
-bash start-generic-coder.sh
-```
-
-**手动启动**
-
-```bash
-cargo run -- serve --host 127.0.0.1 --port 8765
-```
-
-#### 4. 打开浏览器
-
-```text
-http://127.0.0.1:8765
-```
-
-### 开发与验证
-
-```bash
-cargo test
-cargo check --bin generic-coder
-cargo run -p tui
-```
-
-### 桌面应用构建
-
-**macOS:**
-```bash
-bash ui/build-macos.sh          # 产出 .pkg 安装器
-open ui/dist/Generic\ Coder-*-arm64-installer.pkg
-```
-
-**Windows:**
-```bat
-ui\build-windows.bat            # 产出 NSIS .exe 安装器
-```
-
-两端构建脚本都会以 **installer** 为最终产物：
-
-- macOS 输出 `.pkg`，安装时可选择 `/Applications` 或当前用户目录下的 `~/Applications`
-- Windows 输出 NSIS `.exe`，安装时可选择安装目录
-- 安装器会把桌面应用及其运行所需的打包文件展开到所选安装位置，而不是生成仅依赖当前源码目录的启动器
-
-### 目录结构
-
-```text
-src/
-  main.rs           CLI + 服务启动
-  web.rs            Web UI 后端 (Axum)
-  agent.rs          Agent 循环与任务执行
-  acp.rs            ACP 多智能体协作
-  oneshot.rs        One Shot 自主脑暴执行
-  llm.rs            模型接入与流式解析
-  workflow.rs       工作流管道 (Work/Plan/Review)
-  error_memory.rs   错误记忆与回避提示
-  skills.rs         技能注册与管理
-  tools.rs          工具集合 (含 Computer Use)
-  workspace.rs      工作区管理
-  remote.rs         SSH 远程环境
-  media.rs          媒体处理
-  types.rs          共享类型定义
-  config.rs         配置加载与保存
-tui/                TUI 终端界面 (~2060 行 Rust)
-ui/                 Electron GUI 桌面应用 + 构建脚本
-assets/
-  generic_coder/    Web 前端资源 (HTML/CSS/JS)
-skills/
-  cli-anything/     自然语言转 Shell 命令
-  brainstorming/    One Shot 脑暴技能
-  code-review/      代码审查
-  create-skill/     创建新技能
-  file-search/      文件搜索
-  self-audit/       自我审计
-  webfetch/         网页抓取
-memory/             自主记忆系统 (L1-L4)
-```
+- Work / Plan / Review 三模式工作流，支持拖拽节点
+- ACP 多智能体协作（Orchestrator + Specialist 架构）
+- One Shot 自主脑暴驱动执行
+- 7 项预设技能，支持远程安装新技能
+- 持久化错误记忆 + 自动回避提示
+- Computer Use（截屏 + 鼠标/键盘操作），CDP 桥接扩展
+- Electron 桌面安装打包（macOS arm64 / x64 .pkg）
+- Token 用量实时统计
+- 输入草稿恢复（ArrowUp / ArrowDown）
+- 命令面板（⌘K / ⌘P）
+- 多主题切换
 
 ---
 
@@ -320,111 +280,31 @@ memory/             自主记忆系统 (L1-L4)
 
 ## English
 
-### What it is
+### What is this?
 
-Generic Coder：https://github.com/sapsapshen/Generic-Coder
-is now a **Rust-first** local coding cockpit. In practice, the repository is organized around one Axum backend and three frontends:
+Generic Coder is a **local AI coding cockpit** built with Rust + Axum at the backend, offering three frontend options:
 
-- **Web UI** for the default browser-based workflow
-- **Electron desktop UI** for a packaged local desktop experience
-- **TUI** for keyboard-first terminal usage
+- **Web UI** (browser default, zero install)
+- **Electron Desktop** (polished native shell with Apple design language)
+- **TUI** (terminal native, keyboard-centric)
 
-The current day-to-day scope is practical rather than abstract:
+The architecture is fully Rust-powered, with no Python dependency. The frontend communicates with the backend via HTTP/JSON APIs.
 
-- chat with the coding agent and run coding tasks
-- save and switch model configurations locally
-- open a workspace, browse the tree, search files, and preview text or image files inside the session area
-- inspect Git changes, view diffs, and use revert helpers
-- connect to a remote SSH workspace
-- optionally enable ACP multi-agent mode, One Shot, and Computer Use when needed
+### What it covers
 
-Recommended entry points:
-
-- **Windows one-click launcher:** `start-generic-coder.bat`
-- **macOS one-click launcher:** `bash start-generic-coder.sh`
-- **Manual startup:** `cargo run -- serve --host 127.0.0.1 --port 8765`
-
-Default local URL:
-
-```text
-http://127.0.0.1:8765
-```
-
-### Latest visible UI and interaction changes (2026-05-05)
-
-- The Electron desktop UI was tightened further, with Apple-style typography and lighter top chrome.
-- The Windows desktop shell now hides the native menu bar to reduce top-level noise.
-- `ArrowUp` / `ArrowDown` in the input restores the previous draft, including the attached file state.
-- The lower-left status card now shows token usage based on aggregated command usage data.
-- Clicking a workspace file now previews full text content or an image directly inside the session area.
-- The attachment button was replaced with an SVG icon so the desktop UI feels more consistent.
-
-### Current implementation status
-
-The Rust runtime now owns the full execution path:
-
-| File | Purpose |
-|------|---------|
-| `src/main.rs` | CLI and server startup |
-| `src/web.rs` | Axum web backend, all API routes |
-| `src/agent.rs` | ReAct agent loop, task queue, stop signals |
-| `src/acp.rs` | ACP multi-agent collaboration protocol |
-| `src/oneshot.rs` | One Shot autonomous brainstorming-driven execution |
-| `src/llm.rs` | Claude / OpenAI-compatible backends and streaming |
-| `src/workflow.rs` | Work/Plan/Review 3-mode workflow pipeline |
-| `src/skills.rs` | Pluggable skills registry and management |
-| `src/error_memory.rs` | Persistent error memory with avoidance hints |
-| `src/tools.rs` | File, shell, Git, web, Computer Use tool implementations |
-| `src/workspace.rs` | Local workspace manager |
-| `src/remote.rs` | SSH remote environment support |
-| `src/media.rs` | Image/media file handling |
-| `src/types.rs` | Shared type definitions |
-| `src/config.rs` | Config loading and persistence |
-| `tui/src/` | TUI terminal interface |
-| `ui/` | Electron main process, preload, build scripts |
-| `ui/renderer/` | Electron desktop renderer UI |
-| `assets/generic_coder/` | Browser Web UI assets |
-
-### Included capabilities
-
-- Rust + Axum backend
-- Web UI for browser use
-- Electron desktop UI for packaged local use
-- TUI for terminal-first workflows
-- Multi-model configuration with local persistence
-- Workspace selection, file tree browsing, search, and text or image preview
-- Git change review, diff preview, and revert helpers
-- Remote SSH file and command operations
-- Image upload into the chat context
-- Work / Plan / Review workflow modes
-- ACP multi-agent collaboration
-- One Shot autonomous mode
-- Pluggable skills and persistent error memory
-- Computer Use for screenshot and input actions
-- macOS / Windows build automation for the desktop shell
-
-### Model configuration
-
-You can configure models in two ways:
-
-1. **Recommended:** save them in **Settings** from the web UI
-2. Add a `mykey.json` file in the project root based on `mykey.json.example`
-
-The UI includes ready-to-use presets for common providers:
-
-- DeepSeek
-- Qwen / DashScope
-- Kimi / Moonshot
-- MiniMax
-- Doubao / Ark
-- Tencent Hunyuan
-- Baidu Qianfan
-- Zhipu
-- OpenAI / Anthropic / OpenRouter
-
-Manual configuration is also supported for session type, base URL, provider, model name, and API key.
-
-Saved UI configurations are written to the local user profile rather than committed to the repository.
+- Chat with LLM and trigger coding tasks
+- Save and switch between multiple model configurations
+- Open a local workspace: browse file tree, search files, preview text/image inline
+- Git diff viewer with revert assistance
+- Remote SSH connection for file and command operations
+- Workflow modes: Work / Plan / Review
+- ACP multi-agent orchestration (Orchestrator + Specialist)
+- One Shot autonomous brainstorming execution
+- 7 built-in skills (CLI Anything, Brainstorming, Code Review, Create Skill, File Search, Self Audit, Webfetch)
+- Persistent error memory with avoidance hints
+- Computer Use (screenshots + keyboard/mouse automation, CDP bridge)
+- Built-in provider profiles for 15+ LLM providers
+- Electron desktop installer packaging for macOS (arm64 + x64)
 
 ### Quick start
 
@@ -435,7 +315,7 @@ rustc --version
 cargo --version
 ```
 
-If Rust is not installed yet, use [Rustup](https://rustup.rs/).
+If you don't have Rust yet, install [Rustup](https://rustup.rs/).
 
 #### 2. Clone the repository
 
@@ -444,13 +324,9 @@ git clone https://github.com/sapsapshen/Generic-Coder-Rust.git
 cd Generic-Coder-Rust
 ```
 
-#### 3. Start the app
+#### 3. Launch the application
 
-**Windows** — Double-click:
-
-```text
-start-generic-coder.bat
-```
+**Windows** — Double-click `start-generic-coder.bat`
 
 **macOS / Linux**
 
@@ -464,11 +340,44 @@ bash start-generic-coder.sh
 cargo run -- serve --host 127.0.0.1 --port 8765
 ```
 
-#### 4. Open the UI
+#### 4. Open the interface
 
 ```text
 http://127.0.0.1:8765
 ```
+
+Or launch the Electron desktop app.
+
+### Model Configuration
+
+You can configure models in two ways:
+1. **Recommended:** From **Settings** in the Web UI (with built-in provider profiles)
+2. By creating `mykey.json` in the project root from `mykey.json.example`
+
+The UI already includes presets for common providers: DeepSeek, Qwen / DashScope, Kimi / Moonshot, MiniMax, Doubao / Ark, Tencent Hunyuan, Baidu Qianfan, Zhipu, OpenAI / Anthropic / OpenRouter.
+
+You can also configure manually: session type, base URL, provider, model name, and API key.
+
+Saved configurations from the UI are written to the user's local profile, not the repository.
+
+### Recent UI & Interaction Optimizations (2026-05-07)
+
+- **Apple Font System** — Font stack switched to native Apple typography (`-apple-system, 'SF Pro Text', 'SF Pro Display'`); all UI icons enlarged **2.5×**.
+- **Window Size** — Default 1440×960 for better readability.
+- **Drag-and-Drop Workflow** — Workflow Builder nodes are now draggable; visually connect Work → Plan → Review pipelines.
+- **Token Usage Display** — Bottom-left model card aggregates real-time token usage by command.
+- **Collapsible Sidebar** — Workspace file tree collapses with smooth animation.
+- **Draft Recovery** — `ArrowUp` / `ArrowDown` restores previous message draft and attachment state.
+- **Inline File Preview** — Click workspace file to preview text or image directly in the session area.
+- **SVG Attachment Icon** — Replaced emoji with SVG icon for unified look.
+- **Chrome Auto-Detection** — Computer Use auto-detects Chrome/Chromium on all platforms.
+- **Windows Menu Hide** — Electron hides native menubar on Windows.
+
+### Electron Desktop Installer
+
+Installers for macOS are available in `ui/dist/`:
+- `Generic Coder-1.0.0-arm64-installer.pkg` — Apple Silicon
+- `Generic Coder-1.0.0-x64-installer.pkg` — Intel Mac
 
 ### Development
 
@@ -478,26 +387,7 @@ cargo check --bin generic-coder
 cargo build --release
 ```
 
-### Desktop packaging
-
-**macOS:**
-```bash
-bash ui/build-macos.sh          # produces .pkg installers
-open ui/dist/Generic\ Coder-*-arm64-installer.pkg
-```
-
-**Windows:**
-```bat
-ui\build-windows.bat            # produces an NSIS .exe installer
-```
-
-The desktop build scripts now emit installer artifacts only:
-
-- macOS uses `.pkg` so Installer can place the packaged app into `/Applications` or `~/Applications`
-- Windows uses an NSIS `.exe` with install-directory selection
-- the installer expands the packaged desktop app and bundled runtime files into the chosen install location instead of generating a launcher tied to the source checkout
-
-### Project structure
+### Project Structure
 
 ```text
 src/
@@ -505,29 +395,28 @@ src/
   web.rs            Web UI backend (Axum)
   agent.rs          Agent loop and task execution
   acp.rs            ACP multi-agent collaboration
-  oneshot.rs        One Shot autonomous brainstorming execution
+  oneshot.rs        One Shot autonomous brainstorm execution
   llm.rs            Model integration and streaming parser
-  workflow.rs       Workflow pipeline (Work/Plan/Review)
-  error_memory.rs   Error memory and avoidance hints
-  skills.rs         Skills registry and manager
+  workflow.rs       Work/Plan/Review pipeline
+  error_memory.rs   Error memory with avoidance hints
+  skills.rs         Skill registration and management
   tools.rs          Tool implementations (incl. Computer Use)
-  workspace.rs      Workspace manager
+  workspace.rs      Workspace management
   remote.rs         SSH remote support
-  media.rs          Media handling
+  media.rs          Media file handling
+  provider_profiles.rs  Built-in provider presets
+  session_store.rs  Session persistence
   types.rs          Shared type definitions
-  config.rs         Config loading and persistence
-tui/                TUI terminal interface (~2060 lines Rust)
-ui/                 Electron GUI desktop app + build scripts
-assets/
-  generic_coder/    Web frontend assets (HTML/CSS/JS)
-skills/
-  cli-anything/     Natural language to shell commands
-  brainstorming/    One Shot brainstorming skill
-  code-review/      Code review
-  create-skill/     Create new skills
-  file-search/      File search
-  self-audit/       Self audit
-  webfetch/         Web fetch
+  config.rs         Configuration loading and persistence
+tui/                Terminal TUI interface (~2060 lines Rust)
+ui/                 Electron desktop GUI app + scripts
+  workbench/        Workbench TypeScript/React view
+  dist/             Build artifacts and installers
+  assets/           Electron assets
+  scripts/          Launch and build scripts
+assets/             Web frontend resources, images, demos
+  tmwd_cdp_bridge/  CDP bridge extension for browser
+skills/             7 built-in skill modules
 memory/             Autonomous memory system (L1-L4)
 ```
 
@@ -537,70 +426,15 @@ memory/             Autonomous memory system (L1-L4)
 
 ## Español
 
-### Qué es
+### ¿Qué es esto?
 
-Generic Coder：https://github.com/sapsapshen/Generic-Coder
-ahora funciona con una implementación **principalmente en Rust**. En la práctica, el repositorio se usa como un cockpit local de desarrollo con un backend Axum y tres frontends:
+Generic Coder es un **puesto de control de desarrollo local con IA**, construido con Rust + Axum en el backend y tres opciones de frontend:
 
-- **Web UI** para el flujo por navegador
-- **Electron desktop UI** para uso local como app de escritorio
-- **TUI** para trabajo centrado en teclado dentro del terminal
+- **Web UI** (navegador, sin instalación)
+- **Electron Desktop** (shell nativo pulido con diseño Apple)
+- **TUI** (terminal nativa, centrada en teclado)
 
-La capacidad real hoy se entiende mejor así:
-
-- conversar con el agente y lanzar tareas de código
-- guardar y cambiar configuraciones de modelos localmente
-- abrir un workspace, navegar el árbol, buscar archivos y previsualizar texto o imágenes dentro de la sesión
-- revisar cambios de Git, ver diffs y usar ayudas de revert
-- conectarse a un entorno remoto por SSH
-- activar ACP multi-agente, One Shot y Computer Use cuando haga falta
-
-Entradas recomendadas:
-
-- **Inicio con un clic en Windows:** `start-generic-coder.bat`
-- **Inicio con un clic en macOS:** `bash start-generic-coder.sh`
-- **Inicio manual:** `cargo run -- serve --host 127.0.0.1 --port 8765`
-
-URL local por defecto:
-
-```text
-http://127.0.0.1:8765
-```
-
-### Cambios visibles recientes de UI e interacción (2026-05-05)
-
-- La UI de Electron se volvió más limpia, con tipografía estilo Apple y menos peso visual arriba.
-- En Windows, la app de escritorio oculta la barra de menú nativa para reducir ruido.
-- `ArrowUp` / `ArrowDown` en el cuadro de entrada recuperan el borrador anterior, incluido el adjunto.
-- La tarjeta inferior izquierda ahora muestra tokens agregados a partir del usage real del comando.
-- Al hacer clic sobre un archivo del workspace, la sesión muestra una previsualización de texto completo o de imagen.
-- El botón de adjuntar ya no usa emoji; ahora usa un icono SVG más consistente.
-
-### Estado actual de la implementación
-
-La ruta de ejecución completa está controlada por Rust:
-
-| Archivo | Propósito |
-|---------|-----------|
-| `src/main.rs` | CLI e inicio del servidor |
-| `src/web.rs` | Backend web (Axum), todas las rutas API |
-| `src/agent.rs` | Bucle del agente ReAct, cola de tareas, señales de parada |
-| `src/acp.rs` | Protocolo de colaboración multi-agente ACP |
-| `src/oneshot.rs` | Ejecución autónoma con lluvia de ideas |
-| `src/llm.rs` | Backends Claude / OpenAI y streaming |
-| `src/workflow.rs` | Pipeline de flujo Work/Plan/Review |
-| `src/skills.rs` | Registro y gestión de habilidades |
-| `src/error_memory.rs` | Memoria de errores con sugerencias |
-| `src/tools.rs` | Implementación de herramientas (incl. Computer Use) |
-| `src/workspace.rs` | Gestión del espacio de trabajo |
-| `src/remote.rs` | Soporte SSH remoto |
-| `src/media.rs` | Manejo de medios |
-| `src/types.rs` | Definiciones de tipos compartidos |
-| `src/config.rs` | Carga y persistencia de configuración |
-| `tui/src/` | Interfaz de terminal TUI |
-| `ui/` | Proceso principal de Electron, preload y scripts de build |
-| `ui/renderer/` | UI renderer de Electron |
-| `assets/generic_coder/` | Recursos de la Web UI en navegador |
+Toda la arquitectura está implementada en Rust, sin dependencia de Python.
 
 ### Capacidades incluidas
 
@@ -609,22 +443,35 @@ La ruta de ejecución completa está controlada por Rust:
 - Electron desktop UI para uso local empaquetado
 - TUI para flujos de terminal
 - configuración multi-modelo con persistencia local
-- selección de workspace, árbol de archivos, búsqueda y previsualización de texto o imagen
+- perfiles de proveedores integrados (DeepSeek, Qwen, Kimi, MiniMax, Doubao, Hunyuan, Qianfan, Zhipu, OpenAI, Anthropic, OpenRouter)
+- selección de workspace, árbol de archivos colapsable, búsqueda y previsualización de texto o imagen
 - revisión de cambios Git, vista previa de diff y ayudas de revert
 - operaciones remotas por SSH
 - subida de imágenes al contexto del chat
-- modos de flujo Work / Plan / Review
+- modos de flujo Work / Plan / Review con nodos arrastrables
 - colaboración multi-agente ACP
 - modo autónomo One Shot
-- sistema de skills y memoria persistente de errores
-- Computer Use para capturas e input del sistema
-- automatización de build para macOS / Windows
+- sistema de 7 skills y memoria persistente de errores
+- Computer Use para capturas e input del sistema + puente CDP
+- instalador de escritorio Electron para macOS (arm64 + x64)
+- estadísticas de uso de tokens en tiempo real
+- recuperación de borrador con ArrowUp / ArrowDown
+
+### Optimizaciones recientes de UI (2026-05-07)
+
+- **Sistema de fuentes Apple** — Tipografía nativa SF Pro, iconos 2.5× más grandes
+- **Tamaño de ventana** — 1440×960 predeterminado
+- **Workflow arrastrable** — Nodos del Workflow Builder conectables visualmente
+- **Panel lateral colapsable** — Árbol de workspace plegable
+- **Vista previa en línea** — Vista previa de texto/imagen al hacer clic en archivos
+- **Recuperación de borrador** — ArrowUp/ArrowDown recupera el borrador anterior
+- **Icono SVG** — Botón de adjuntar cambiado a SVG
+- **Auto-detección de Chrome** — Computer Use detecta Chrome automáticamente
 
 ### Configuración de modelos
 
 Puedes configurar modelos de dos formas:
-
-1. **Recomendado:** desde **Settings** en la interfaz web
+1. **Recomendado:** desde **Settings** en la interfaz web (con perfiles de proveedores integrados)
 2. Creando `mykey.json` en la raíz del proyecto a partir de `mykey.json.example`
 
 La UI ya incluye preajustes para proveedores comunes: DeepSeek, Qwen / DashScope, Kimi / Moonshot, MiniMax, Doubao / Ark, Tencent Hunyuan, Baidu Qianfan, Zhipu, OpenAI / Anthropic / OpenRouter.
@@ -673,6 +520,14 @@ cargo run -- serve --host 127.0.0.1 --port 8765
 http://127.0.0.1:8765
 ```
 
+O inicia la aplicación de escritorio Electron.
+
+### Instalador de Escritorio Electron
+
+Los instaladores para macOS están disponibles en `ui/dist/`:
+- `Generic Coder-1.0.0-arm64-installer.pkg` — Apple Silicon
+- `Generic Coder-1.0.0-x64-installer.pkg` — Intel Mac
+
 ### Desarrollo
 
 ```bash
@@ -698,19 +553,24 @@ src/
   workspace.rs      Gestión del espacio de trabajo
   remote.rs         Soporte SSH remoto
   media.rs          Manejo de medios
+  provider_profiles.rs  Perfiles de proveedores integrados
+  session_store.rs  Persistencia de sesiones
   types.rs          Definiciones de tipos compartidos
   config.rs         Carga y persistencia de configuración
 tui/                Interfaz de terminal TUI (~2060 líneas Rust)
 ui/                 App de escritorio Electron GUI + scripts
-assets/
-  generic_coder/    Recursos del frontend web (HTML/CSS/JS)
-skills/
-  cli-anything/     Lenguaje natural a comandos shell
-  brainstorming/    Habilidad de lluvia de ideas
-  code-review/      Revisión de código
-  create-skill/     Crear nuevas habilidades
-  file-search/      Búsqueda de archivos
-  self-audit/       Auto auditoría
-  webfetch/         Descarga web
+  workbench/        Vista Workbench TypeScript/React
+  dist/             Artefactos de compilación e instaladores
+  assets/           Recursos de Electron
+  scripts/          Scripts de lanzamiento y compilación
+assets/             Recursos del frontend web, imágenes, demos
+  tmwd_cdp_bridge/  Extensión de puente CDP para navegador
+skills/             7 módulos de habilidades integradas
 memory/             Sistema de memoria autónoma (L1-L4)
 ```
+
+---
+
+## License / 许可 / Licencia
+
+MIT

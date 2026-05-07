@@ -14,6 +14,8 @@ use tokio::sync::{mpsc, RwLock};
 use generic_coder::agent::GenericAgent;
 use generic_coder::config;
 use generic_coder::error_memory::ErrorMemory;
+use generic_coder::provider_profiles;
+use generic_coder::session_store;
 use generic_coder::skills::SkillsManager;
 use generic_coder::types::{LlmConfig, ToolSchema};
 use generic_coder::workflow::AgentMode;
@@ -114,6 +116,7 @@ pub struct App {
     // ── Sessions ──────────────────────────────
     pub sessions: Vec<SessionEntry>,
     pub sessions_cursor: usize,
+    pub sessions_checkpoint_cursor: usize,
 
     // ── System ────────────────────────────────
     pub project_dir: PathBuf,
@@ -133,6 +136,15 @@ pub struct App {
 
     // ── Theme ──────────────────────────────────
     pub theme_name: String,
+
+    // ── DeepSeek-TUI inspired features ────────────────────────
+    pub yolo_enabled: bool,
+    pub reasoning_effort: Option<String>, // None / "off" / "high" / "max"
+    pub last_usage: Option<(u64, u64, u64)>, // (prompt, completion, cached)
+    pub session_usage: session_store::TokenUsage,
+    pub auto_model_enabled: bool,
+    pub auto_route: Option<generic_coder::agent::AutoRouteDecision>,
+    pub active_session_index: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -159,6 +171,24 @@ pub struct SessionEntry {
     pub preview: String,
     pub rounds: usize,
     pub time: String,
+    pub checkpoint_count: usize,
+}
+
+fn relative_session_time(saved_at: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or_default();
+    let delta = (now - saved_at).max(0);
+    if delta < 60 {
+        "just now".into()
+    } else if delta < 3600 {
+        format!("{}m ago", delta / 60)
+    } else if delta < 86_400 {
+        format!("{}h ago", delta / 3600)
+    } else {
+        format!("{}d ago", delta / 86_400)
+    }
 }
 
 #[derive(Clone)]
@@ -318,6 +348,11 @@ impl App {
             .and_then(|v| v.get("theme").and_then(|t| t.as_str()).map(String::from))
             .unwrap_or_else(|| "solarflare".into());
 
+        let auto_model_enabled = agent
+            .try_read()
+            .map(|guard| guard.is_auto_model())
+            .unwrap_or(false);
+
         Self {
             agent,
             task_tx,
@@ -352,6 +387,7 @@ impl App {
             changes_visible: false,
             sessions: Vec::new(),
             sessions_cursor: 0,
+            sessions_checkpoint_cursor: 0,
             project_dir,
             system_prompt,
             tools_schema,
@@ -365,6 +401,13 @@ impl App {
             skills_list,
             skills_cursor: 0,
             theme_name: theme,
+            yolo_enabled: false,
+            reasoning_effort: None,
+            last_usage: None,
+            session_usage: session_store::TokenUsage::default(),
+            auto_model_enabled,
+            auto_route: None,
+            active_session_index: None,
         }
     }
 
@@ -487,6 +530,9 @@ impl App {
             KeyCode::F(3) => self.switch_mode(AgentMode::Review),
             KeyCode::F(4) => self.toggle_multi_agent(),
             KeyCode::F(5) => self.toggle_one_shot(),
+            KeyCode::F(6) => self.toggle_yolo(),
+            KeyCode::F(7) => self.toggle_auto_model(),
+            KeyCode::BackTab => self.cycle_reasoning_effort(),
             KeyCode::F(8) => {
                 self.changes_visible = !self.changes_visible;
                 if self.changes_visible {
@@ -638,12 +684,47 @@ impl App {
         // Stream responses
         let mut output = String::new();
         let mut acp_state: Option<AcpState> = None;
+        let mut turn_usage: Option<session_store::TokenUsage> = None;
         while let Some(item) = display_rx.recv().await {
+            if let Some(route) = item.get("route") {
+                self.auto_route = Some(generic_coder::agent::AutoRouteDecision {
+                    model_index: self.current_model_idx,
+                    model: route
+                        .get("model")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    display_name: route
+                        .get("display_name")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    reasoning_effort: route
+                        .get("reasoning_effort")
+                        .and_then(|value| value.as_str())
+                        .map(|value| value.to_string()),
+                    reason: route
+                        .get("reason")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                });
+            }
             if let Some(next) = item.get("next").and_then(|v| v.as_str()) {
                 output.push_str(next);
             }
             if let Some(done) = item.get("done").and_then(|v| v.as_str()) {
                 output = done.to_string();
+                // Capture token usage if present
+                if let Some(usage) = item.get("usage") {
+                    let pt = usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let ct = usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let ca = usage.get("prompt_cache_hit_tokens").and_then(|v| v.as_u64())
+                        .or_else(|| usage.get("cached_tokens").and_then(|v| v.as_u64()))
+                        .unwrap_or(0);
+                    self.last_usage = Some((pt, ct, ca));
+                    turn_usage = session_store::usage_from_value(usage);
+                }
                 break;
             }
             if let Some(acp) = item.get("acp") {
@@ -668,8 +749,10 @@ impl App {
 
         self.is_running = false;
         self.set_status("Ready.");
+        self.persist_current_session(turn_usage);
         self.refresh_changes();
         self.refresh_workspace_tree();
+        self.refresh_sessions();
     }
 
     fn parse_acp_event(acp: &Value) -> Option<AcpState> {
@@ -742,10 +825,39 @@ impl App {
                 self.dialog = Dialog::Sessions;
                 self.refresh_sessions();
             }
+            "/profiles" => {
+                let profiles = provider_profiles::built_in_provider_profiles()
+                    .into_iter()
+                    .map(|profile| format!("  {} -> {} ({})", profile.id, profile.model, profile.apibase))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.messages.push(ChatMessage {
+                    role: "assistant".into(),
+                    content: format!("DeepSeek provider presets:\n{}\n\nUse /preset <id> to apply one.", profiles),
+                    streaming: false,
+                    acp: None,
+                });
+            }
+            "/auto" | "/model auto" => {
+                self.toggle_auto_model();
+            }
+            other if other.starts_with("/preset ") => {
+                self.apply_provider_profile(other.trim_start_matches("/preset ").trim())
+                    .await;
+            }
+            other if other.starts_with("/continue ") => {
+                self.restore_session_target(other.trim_start_matches("/continue ").trim());
+            }
+            other if other.starts_with("/fork ") => {
+                self.fork_session_target(other.trim_start_matches("/fork ").trim());
+            }
+            other if other.starts_with("/delete ") => {
+                self.delete_session_target(other.trim_start_matches("/delete ").trim());
+            }
             other => {
                 self.messages.push(ChatMessage {
                     role: "assistant".into(),
-                    content: format!("Unknown command: {other}\n\nCommands:\n  /new, /clear, /help, /settings, /stop, /refresh, /sessions"),
+                    content: format!("Unknown command: {other}\n\nCommands:\n  /new, /clear, /help, /settings, /stop, /refresh, /sessions, /profiles, /preset <id>, /continue <session[@checkpoint]>, /fork <session[@checkpoint]>, /delete <session>, /auto"),
                     streaming: false,
                     acp: None,
                 });
@@ -754,8 +866,14 @@ impl App {
     }
 
     fn new_session(&mut self) {
+        self.persist_current_session(None);
         self.messages.clear();
         self.scroll_offset = 0;
+        self.active_session_index = None;
+        self.auto_route = None;
+        self.last_usage = None;
+        self.session_usage = session_store::TokenUsage::default();
+        self.refresh_sessions();
         self.set_status("New session started.");
     }
 
@@ -833,6 +951,278 @@ impl App {
             "One Shot: {}",
             if self.one_shot_enabled { "ON" } else { "OFF" }
         ));
+    }
+
+    fn toggle_yolo(&mut self) {
+        self.yolo_enabled = !self.yolo_enabled;
+        if let Ok(a) = self.agent.try_read() {
+            a.set_yolo(self.yolo_enabled);
+        }
+        self.set_status(&format!(
+            "YOLO mode: {}{}",
+            if self.yolo_enabled { "ON" } else { "OFF" },
+            if self.yolo_enabled { " ⚡ AI will execute autonomously" } else { "" }
+        ));
+    }
+
+    fn toggle_auto_model(&mut self) {
+        self.auto_model_enabled = !self.auto_model_enabled;
+        self.auto_route = None;
+        if let Ok(agent) = self.agent.try_read() {
+            agent.set_auto_model(self.auto_model_enabled);
+        }
+        self.set_status(if self.auto_model_enabled {
+            "Auto model routing: ON"
+        } else {
+            "Auto model routing: OFF"
+        });
+    }
+
+    async fn apply_provider_profile(&mut self, profile_id: &str) {
+        let Some(profile) = provider_profiles::get_provider_profile(profile_id) else {
+            self.set_status("Unknown provider preset.");
+            return;
+        };
+
+        let key = format!("generic_coder_{}_{}_config", profile.session_type, profile.id.replace('-', "_"));
+        let api_key = self
+            .llm_configs
+            .get(
+                self.models
+                    .get(self.current_model_idx)
+                    .map(|entry| entry.0.as_str())
+                    .unwrap_or(""),
+            )
+            .map(|cfg| cfg.apikey.clone())
+            .unwrap_or_default();
+        let mut config = self
+            .llm_configs
+            .get(
+                self.models
+                    .get(self.current_model_idx)
+                    .map(|entry| entry.0.as_str())
+                    .unwrap_or(""),
+            )
+            .cloned()
+            .unwrap_or(LlmConfig {
+                name: String::new(),
+                apikey: String::new(),
+                apibase: String::new(),
+                model: String::new(),
+                context_win: 0,
+                proxy: None,
+                verify: false,
+                max_retries: 1,
+                stream: false,
+                timeout: 0,
+                read_timeout: 0,
+                temperature: 0.0,
+                max_tokens: None,
+                reasoning_effort: None,
+                service_tier: None,
+                thinking_type: None,
+                thinking_budget_tokens: None,
+                api_mode: "chat_completions".to_string(),
+                extra_sys_prompt: String::new(),
+            });
+        config.name = profile.label.to_string();
+        config.model = profile.model.to_string();
+        config.apibase = profile.apibase.to_string();
+        config.apikey = api_key;
+        config.api_mode = profile.api_mode.to_string();
+        config.reasoning_effort = profile.reasoning_effort.map(|value| value.to_string());
+
+        if let Err(err) = config::save_ui_llm_config_entry(&key, &config) {
+            self.set_status(&format!("Failed to save preset: {err:#}"));
+            return;
+        }
+
+        self.llm_configs = config::load_ui_llm_configs();
+        self.models = self
+            .llm_configs
+            .iter()
+            .map(|(entry_key, cfg)| {
+                let display = if cfg.name.trim().is_empty() {
+                    cfg.model.clone()
+                } else {
+                    cfg.name.clone()
+                };
+                (entry_key.clone(), display)
+            })
+            .collect();
+        self.current_model_idx = self
+            .models
+            .iter()
+            .position(|(entry_key, _)| entry_key == &key)
+            .unwrap_or(self.current_model_idx.min(self.models.len().saturating_sub(1)));
+        self.reasoning_effort = config.reasoning_effort.clone();
+        self.update_model_label();
+
+        if let Ok(mut agent) = self.agent.try_write() {
+            let cfg = config::load_config(&self.project_dir);
+            let _ = agent.load_llm_sessions(&cfg.llm_configs, &cfg.mixin_configs);
+            let _ = agent.next_llm(self.current_model_idx as isize);
+            agent.set_reasoning_effort(self.reasoning_effort.clone());
+        }
+
+        self.set_status(&format!("Applied preset: {}", profile.label));
+    }
+
+    fn parse_session_target(raw: &str) -> Option<(usize, Option<usize>)> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let (session, checkpoint) = trimmed
+            .split_once('@')
+            .map(|(left, right)| (left.trim(), Some(right.trim())))
+            .unwrap_or((trimmed, None));
+        let session_index = session.parse::<usize>().ok()?;
+        let checkpoint_index = checkpoint.and_then(|value| value.parse::<usize>().ok());
+        Some((session_index, checkpoint_index))
+    }
+
+    fn restore_session_target(&mut self, raw: &str) {
+        let Some((session_index, checkpoint_index)) = Self::parse_session_target(raw) else {
+            self.set_status("Use /continue <session> or /continue <session>@<checkpoint>");
+            return;
+        };
+        let Some(saved) = session_store::get_session(session_index) else {
+            self.set_status("Session not found.");
+            return;
+        };
+        let source_messages = if let Some(checkpoint_index) = checkpoint_index {
+            match session_store::get_checkpoint(session_index, checkpoint_index) {
+                Some(checkpoint) => {
+                    self.session_usage = checkpoint.usage_totals.clone();
+                    self.last_usage = checkpoint
+                        .last_usage
+                        .as_ref()
+                        .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+                    checkpoint.messages
+                }
+                None => {
+                    self.set_status("Checkpoint not found.");
+                    return;
+                }
+            }
+        } else {
+            self.session_usage = saved.usage_totals.clone();
+            self.last_usage = saved
+                .last_usage
+                .as_ref()
+                .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+            saved.messages.clone()
+        };
+        self.messages = source_messages
+            .into_iter()
+            .map(|message| ChatMessage {
+                role: message
+                    .get("role")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("assistant")
+                    .to_string(),
+                content: message
+                    .get("content")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                streaming: false,
+                acp: None,
+            })
+            .collect();
+        self.active_session_index = Some(session_index);
+        self.scroll_offset = 0;
+        self.dialog = Dialog::None;
+        self.set_status(&format!(
+            "Restored session #{}{}",
+            session_index,
+            checkpoint_index
+                .map(|value| format!(" @ checkpoint {value}"))
+                .unwrap_or_default()
+        ));
+    }
+
+    fn fork_session_target(&mut self, raw: &str) {
+        let Some((session_index, checkpoint_index)) = Self::parse_session_target(raw) else {
+            self.set_status("Use /fork <session> or /fork <session>@<checkpoint>");
+            return;
+        };
+        match session_store::fork_session(session_index, checkpoint_index) {
+            Ok(forked) => {
+                self.active_session_index = Some(forked.index);
+                self.session_usage = forked.usage_totals.clone();
+                self.last_usage = forked
+                    .last_usage
+                    .as_ref()
+                    .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+                self.messages = forked
+                    .messages
+                    .into_iter()
+                    .map(|message| ChatMessage {
+                        role: message
+                            .get("role")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("assistant")
+                            .to_string(),
+                        content: message
+                            .get("content")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        streaming: false,
+                        acp: None,
+                    })
+                    .collect();
+                self.scroll_offset = 0;
+                self.dialog = Dialog::None;
+                self.refresh_sessions();
+                self.set_status(&format!("Forked session #{} into #{}", session_index, forked.index));
+            }
+            Err(err) => self.set_status(&format!("Fork failed: {err:#}")),
+        }
+    }
+
+    fn delete_session_target(&mut self, raw: &str) {
+        if raw.trim().is_empty() || raw.contains('@') {
+            self.set_status("Use /delete <session>");
+            return;
+        }
+        let Ok(session_index) = raw.trim().parse::<usize>() else {
+            self.set_status("Use /delete <session>");
+            return;
+        };
+
+        match session_store::delete_session(session_index) {
+            Ok(true) => {
+                if self.active_session_index == Some(session_index) {
+                    self.messages.clear();
+                    self.scroll_offset = 0;
+                    self.active_session_index = None;
+                    self.auto_route = None;
+                    self.last_usage = None;
+                    self.session_usage = session_store::TokenUsage::default();
+                }
+                self.refresh_sessions();
+                self.set_status(&format!("Deleted session #{}", session_index));
+            }
+            Ok(false) => self.set_status("Session not found."),
+            Err(err) => self.set_status(&format!("Delete failed: {err:#}")),
+        }
+    }
+
+    fn cycle_reasoning_effort(&mut self) {
+        let efforts: &[Option<&str>] = &[None, Some("off"), Some("high"), Some("max")];
+        let current_idx = efforts.iter().position(|e| {
+            e.map(|s| s.to_string()) == self.reasoning_effort
+        }).unwrap_or(0);
+        let next = efforts[(current_idx + 1) % efforts.len()];
+        self.reasoning_effort = next.map(|s| s.to_string());
+        if let Ok(a) = self.agent.try_read() {
+            a.set_reasoning_effort(self.reasoning_effort.clone());
+        }
+        let label = self.reasoning_effort.as_deref().unwrap_or("default");
+        self.set_status(&format!("Reasoning effort: {label}"));
     }
 
     fn autocomplete_path(&mut self) {
@@ -924,8 +1314,50 @@ impl App {
     }
 
     pub fn refresh_sessions(&mut self) {
-        self.sessions = Vec::new(); // sessions are in-memory for TUI
-        self.set_status("No sessions to restore (TUI sessions are ephemeral)");
+        self.sessions = session_store::load_sessions()
+            .into_iter()
+            .rev()
+            .map(|session| SessionEntry {
+                index: session.index,
+                preview: session.preview,
+                rounds: session.rounds,
+                time: relative_session_time(session.saved_at),
+                checkpoint_count: session.checkpoints.len(),
+            })
+            .collect();
+        self.sessions_cursor = self.sessions_cursor.min(self.sessions.len().saturating_sub(1));
+        let max_checkpoint_cursor = self
+            .sessions
+            .get(self.sessions_cursor)
+            .map(|session| session.checkpoint_count)
+            .unwrap_or(0);
+        self.sessions_checkpoint_cursor = self.sessions_checkpoint_cursor.min(max_checkpoint_cursor);
+    }
+
+    fn persist_current_session(&mut self, last_usage: Option<session_store::TokenUsage>) {
+        let messages: Vec<Value> = self
+            .messages
+            .iter()
+            .filter(|message| !message.content.trim().is_empty())
+            .map(|message| {
+                serde_json::json!({
+                    "role": message.role,
+                    "content": message.content,
+                })
+            })
+            .collect();
+        if messages.is_empty() {
+            return;
+        }
+
+        if let Ok(saved) = session_store::upsert_session(self.active_session_index, &messages, last_usage) {
+            self.active_session_index = Some(saved.index);
+            self.session_usage = saved.usage_totals;
+            self.last_usage = saved
+                .last_usage
+                .as_ref()
+                .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+        }
     }
 
     // ── Settings event handler ─────────────────────────────────────
@@ -982,9 +1414,43 @@ impl App {
                 }
                 KeyCode::Up => {
                     self.sessions_cursor = self.sessions_cursor.saturating_sub(1);
+                    self.sessions_checkpoint_cursor = 0;
                 }
                 KeyCode::Down => {
                     self.sessions_cursor = (self.sessions_cursor + 1).min(self.sessions.len().saturating_sub(1));
+                    self.sessions_checkpoint_cursor = 0;
+                }
+                KeyCode::Left => {
+                    self.sessions_checkpoint_cursor = self.sessions_checkpoint_cursor.saturating_sub(1);
+                }
+                KeyCode::Right => {
+                    let max_checkpoint_cursor = self
+                        .sessions
+                        .get(self.sessions_cursor)
+                        .map(|session| session_store::list_checkpoints(session.index).len())
+                        .unwrap_or(0);
+                    self.sessions_checkpoint_cursor = (self.sessions_checkpoint_cursor + 1).min(max_checkpoint_cursor);
+                }
+                KeyCode::Enter => {
+                    if let Some((session_index, checkpoint_index)) = self.selected_sessions_dialog_target() {
+                        let target = checkpoint_index
+                            .map(|checkpoint| format!("{session_index}@{checkpoint}"))
+                            .unwrap_or_else(|| session_index.to_string());
+                        self.restore_session_target(&target);
+                    }
+                }
+                KeyCode::Char('f') => {
+                    if let Some((session_index, checkpoint_index)) = self.selected_sessions_dialog_target() {
+                        let target = checkpoint_index
+                            .map(|checkpoint| format!("{session_index}@{checkpoint}"))
+                            .unwrap_or_else(|| session_index.to_string());
+                        self.fork_session_target(&target);
+                    }
+                }
+                KeyCode::Char('d') => {
+                    if let Some(session) = self.sessions.get(self.sessions_cursor) {
+                        self.delete_session_target(&session.index.to_string());
+                    }
                 }
                 _ => {}
             },
@@ -999,5 +1465,22 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    pub fn selected_sessions_dialog_target(&self) -> Option<(usize, Option<usize>)> {
+        let session = self.sessions.get(self.sessions_cursor)?;
+        if self.sessions_checkpoint_cursor == 0 {
+            return Some((session.index, None));
+        }
+        let checkpoints = session_store::list_checkpoints(session.index);
+        let checkpoint = checkpoints.into_iter().rev().nth(self.sessions_checkpoint_cursor - 1)?;
+        Some((session.index, Some(checkpoint.index)))
+    }
+
+    pub fn selected_sessions_dialog_checkpoints(&self) -> Vec<session_store::SessionCheckpoint> {
+        self.sessions
+            .get(self.sessions_cursor)
+            .map(|session| session_store::list_checkpoints(session.index).into_iter().rev().collect())
+            .unwrap_or_default()
     }
 }
