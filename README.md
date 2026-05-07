@@ -160,19 +160,19 @@ Latest round of UI and interaction refinements:
 ### 🖼️ Screenshots / 截图 / Capturas de pantalla
 
 #### Chat Workspace
-![Chat Workspace](ui/dist/7a0a274f-0534-499f-9bf4-2452becdc9b5.png)
+<img width="1440" height="960" alt="a190c673-865d-4a5a-b8f5-8f5f4f0b03fe" src="https://github.com/user-attachments/assets/855d51e3-8cd5-4462-9f73-6e3ac95aaea1" />
 
 #### Workflow Builder (Drag-and-Drop)
-![Workflow Builder](ui/dist/8647b5f7-abbd-4f87-b33f-7d46b27dddea.png)
+<img width="1440" height="960" alt="4d662cb5-151e-41e1-9071-312e057a8e23" src="https://github.com/user-attachments/assets/94e4da03-fa3c-4fa2-844b-dc638c32395a" />
 
 #### Workspace Tree (Collapsible)
-![Workspace Tree](ui/dist/d4e9b47c-0590-48f9-8fb6-433a3fbea92c.png)
+<img width="1440" height="960" alt="d0612ab0-df21-4b53-8af9-fb9757006c24" src="https://github.com/user-attachments/assets/ed4b5cd1-59ae-45c9-aae8-054ac9376495" />
 
 #### Agent Skills （Pre-or-Post Installed）
-![Agent Skills](ui/dist/da32ce36-171f-4f3f-aba3-469412340eb7.png)
+<img width="1440" height="960" alt="148a286a-6c76-4778-a7a5-76f66f9d4234" src="https://github.com/user-attachments/assets/16d772fa-414e-4793-85aa-03c079e8852e" />
 
 #### Settings / Model Configuration (Provider Profiles)
-![Model Configuration](ui/dist/f38bbac0-399f-446c-adb0-d78532b2ede6.png)
+<img width="1440" height="960" alt="57537dd5-ba35-4be1-b33e-766aecb37621" src="https://github.com/user-attachments/assets/17c2d635-17a6-4af4-9ef4-076a483637dd" />
 
 ---
 
