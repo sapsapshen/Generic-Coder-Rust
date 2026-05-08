@@ -432,6 +432,7 @@ a {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
+  align-items: end;
 }
 
 #prompt-input,
@@ -978,3 +979,152 @@ a {
   font-family: var(--vscode-editor-font-family, monospace);
   color: rgba(200, 210, 220, 0.6);
 }
+
+/* ── YOLO warning banner ────────────────────────────────────── */
+.yolo-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(200, 30, 30, 0.18);
+  border: 1px solid rgba(240, 80, 80, 0.45);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #ff9a9a;
+  animation: yolo-pulse 2.4s ease-in-out infinite;
+}
+
+.yolo-warning[hidden] { display: none !important; }
+
+.yolo-warning .codicon { flex-shrink: 0; color: #ff6060; }
+
+.yolo-warning__text { flex: 1; }
+
+.yolo-warning__off {
+  flex-shrink: 0;
+  background: rgba(220, 60, 60, 0.25);
+  border: 1px solid rgba(240, 80, 80, 0.5);
+  color: #ff9a9a;
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.yolo-warning__off:hover { background: rgba(220, 60, 60, 0.45); }
+
+@keyframes yolo-pulse {
+  0%, 100% { border-color: rgba(240, 80, 80, 0.45); }
+  50%       { border-color: rgba(240, 80, 80, 0.85); }
+}
+
+/* ── Slash command hints ───────────────────────────────────── */
+.slash-hints {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  z-index: 10;
+}
+
+.slash-hints[hidden] { display: none !important; }
+
+.slash-hints__item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 14px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  transition: background 0.1s;
+}
+
+.slash-hints__item:hover,
+.slash-hints__item.is-selected {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.slash-hints__cmd {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--vscode-textLink-foreground);
+  min-width: 120px;
+}
+
+.slash-hints__desc {
+  font-size: 12px;
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Position context for slash hints */
+.composer__input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+/* ── API key field with toggle ─────────────────────────────── */
+.api-key-group {
+  display: flex;
+  gap: 6px;
+}
+
+.api-key-group .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.api-key-toggle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 8px;
+  color: var(--vscode-input-foreground);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.api-key-toggle:hover { background: var(--vscode-list-hoverBackground); }
+
+/* ── Field help icon ───────────────────────────────────────── */
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.field-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 9px;
+  font-weight: bold;
+  cursor: help;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.field-help:hover { opacity: 1; }

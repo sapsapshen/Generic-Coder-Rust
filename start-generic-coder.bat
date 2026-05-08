@@ -22,7 +22,7 @@ if errorlevel 1 (
         exit /b 1
     )
 ) else (
-    echo Building Rust backend...
+    echo Building Rust backend (first run may take 2-5 minutes, please wait)...
     cargo build --release -q
     if errorlevel 1 exit /b %ERRORLEVEL%
 )

@@ -1,17 +1,14 @@
 //! Status bar rendering for Generic Coder TUI.
 
-use ratatui::{
-    prelude::*,
-    widgets::*,
-};
+use ratatui::{prelude::*, widgets::*};
 
 use crate::app::App;
 
 const DEEPSEEK_PRICING: &[(&str, f64, f64, f64)] = &[
-    ("deepseek-v4-pro",     0.003625, 0.435, 0.87),
-    ("deepseek-v4-flash",   0.0028,   0.14,  0.28),
-    ("deepseek-reasoner",   0.003625, 0.435, 0.87),
-    ("deepseek-chat",       0.0028,   0.14,  0.28),
+    ("deepseek-v4-pro", 0.003625, 0.435, 0.87),
+    ("deepseek-v4-flash", 0.0028, 0.14, 0.28),
+    ("deepseek-reasoner", 0.003625, 0.435, 0.87),
+    ("deepseek-chat", 0.0028, 0.14, 0.28),
 ];
 
 fn estimate_cost(model: &str, prompt: u64, completion: u64, cached: u64) -> Option<String> {
@@ -23,7 +20,11 @@ fn estimate_cost(model: &str, prompt: u64, completion: u64, cached: u64) -> Opti
     let cost = (cached as f64 / 1_000_000.0) * cache_hit
         + (miss / 1_000_000.0) * cache_miss
         + (completion as f64 / 1_000_000.0) * out;
-    Some(if cost < 0.001 { "<$0.001".into() } else { format!("${:.4}", cost) })
+    Some(if cost < 0.001 {
+        "<$0.001".into()
+    } else {
+        format!("${:.4}", cost)
+    })
 }
 
 /// Draw the bottom status bar
@@ -53,11 +54,8 @@ pub fn draw(
         &app.status_msg
     };
 
-    let chunks = Layout::horizontal([
-        Constraint::Percentage(50),
-        Constraint::Percentage(50),
-    ])
-    .split(inner);
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(inner);
 
     // Left: status message + token/cost after last task
     let active_model = app
@@ -101,7 +99,11 @@ pub fn draw(
         .or(app.reasoning_effort.as_deref())
         .unwrap_or("default");
     let yolo_hint = if app.yolo_enabled { " | YOLO⚡" } else { "" };
-    let auto_hint = if app.auto_model_enabled { " | Auto" } else { "" };
+    let auto_hint = if app.auto_model_enabled {
+        " | Auto"
+    } else {
+        ""
+    };
 
     let right_text = format!(
         "{} | Effort:{}{}{} | Ctrl+S:Settings | Ctrl+W:Sidebar | Ctrl+Q:Quit",

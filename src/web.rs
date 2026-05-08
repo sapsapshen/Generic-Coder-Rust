@@ -20,9 +20,9 @@ use tower_http::services::ServeDir;
 
 use crate::agent::GenericAgent;
 use crate::config;
+use crate::error_memory::ErrorMemory;
 use crate::provider_profiles;
 use crate::remote;
-use crate::error_memory::ErrorMemory;
 use crate::session_store::{self, PersistedSession, TokenUsage};
 use crate::skills::SkillsManager;
 use crate::tools;
@@ -320,7 +320,10 @@ fn resolve_workspace_preview_file(
     let metadata = std::fs::metadata(&path)
         .map_err(|err| json_error(StatusCode::NOT_FOUND, format!("{err}")))?;
     if metadata.is_dir() {
-        return Err(json_error(StatusCode::BAD_REQUEST, "Preview supports files only"));
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "Preview supports files only",
+        ));
     }
 
     Ok((path, metadata))
@@ -556,7 +559,8 @@ fn current_model_label(models: &Value) -> String {
 }
 
 fn provider_profiles_payload() -> Value {
-    serde_json::to_value(provider_profiles::built_in_provider_profiles()).unwrap_or_else(|_| json!([]))
+    serde_json::to_value(provider_profiles::built_in_provider_profiles())
+        .unwrap_or_else(|_| json!([]))
 }
 
 fn current_session_payload(state: &AppState) -> Option<Value> {
@@ -564,7 +568,12 @@ fn current_session_payload(state: &AppState) -> Option<Value> {
     let session = session_index.and_then(session_store::get_session)?;
     let active_checkpoint = *state.active_checkpoint_index.read();
     let snapshot = active_checkpoint
-        .and_then(|checkpoint_index| session.checkpoints.iter().find(|checkpoint| checkpoint.index == checkpoint_index))
+        .and_then(|checkpoint_index| {
+            session
+                .checkpoints
+                .iter()
+                .find(|checkpoint| checkpoint.index == checkpoint_index)
+        })
         .cloned();
     let checkpoints: Vec<Value> = session
         .checkpoints
@@ -1096,7 +1105,10 @@ async fn connect_remote(
     let cwd = payload.cwd.clone().unwrap_or_default();
 
     if payload.enabled && host.trim().is_empty() {
-        return Err(json_error(StatusCode::BAD_REQUEST, "Remote host is required"));
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "Remote host is required",
+        ));
     }
 
     let result = if payload.enabled {
@@ -1163,7 +1175,12 @@ async fn chat(
             format!("Prompt exceeds {} characters", MAX_CHAT_PROMPT_LEN),
         ));
     }
-    let active_pending_tasks = state.pending.read().values().filter(|entry| !entry.done).count();
+    let active_pending_tasks = state
+        .pending
+        .read()
+        .values()
+        .filter(|entry| !entry.done)
+        .count();
     if active_pending_tasks >= MAX_PENDING_TASKS {
         return Err(json_error(
             StatusCode::TOO_MANY_REQUESTS,
@@ -1184,8 +1201,13 @@ async fn chat(
     }
 
     if let Some(raw) = prompt.strip_prefix("/fork ") {
-        let (session_index, checkpoint_index) = parse_session_target(raw.trim())
-            .ok_or_else(|| json_error(StatusCode::BAD_REQUEST, "Invalid fork target. Use /fork <session> or /fork <session>@<checkpoint>"))?;
+        let (session_index, checkpoint_index) =
+            parse_session_target(raw.trim()).ok_or_else(|| {
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    "Invalid fork target. Use /fork <session> or /fork <session>@<checkpoint>",
+                )
+            })?;
         let forked = session_store::fork_session(session_index, checkpoint_index)
             .map_err(|err| json_error(StatusCode::BAD_REQUEST, format!("{err:#}")))?;
         state.messages.write().clone_from(&forked.messages);
@@ -1208,7 +1230,10 @@ async fn chat(
         let (messages, notice_suffix) = if let Some(checkpoint_index) = checkpoint_index {
             let checkpoint = session_store::get_checkpoint(target, checkpoint_index)
                 .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Checkpoint not found"))?;
-            (checkpoint.messages, format!(" checkpoint {}", checkpoint_index))
+            (
+                checkpoint.messages,
+                format!(" checkpoint {}", checkpoint_index),
+            )
         } else {
             (session.messages.clone(), String::new())
         };
@@ -1272,21 +1297,24 @@ async fn chat(
             if let Some(acp) = item.get("acp") {
                 if !acp.is_null() {
                     acp_events.push(acp.clone());
-                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
+                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn)
+                    {
                         entry.acp_events = acp_events.clone();
                     }
                 }
             }
             if let Some(usage) = item.get("usage") {
                 if !usage.is_null() {
-                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
+                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn)
+                    {
                         entry.usage = Some(usage.clone());
                     }
                 }
             }
             if let Some(interrupt) = item.get("interrupt") {
                 if !interrupt.is_null() {
-                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn) {
+                    if let Some(entry) = state_for_spawn.pending.write().get_mut(&task_id_for_spawn)
+                    {
                         entry.interrupt = Some(interrupt.clone());
                     }
                 }
@@ -1585,10 +1613,7 @@ async fn workspace_tree() -> Json<Value> {
 }
 
 async fn workspace_files(Query(query): Query<FilesQuery>) -> Json<Value> {
-    let limit = query
-        .limit
-        .unwrap_or(10)
-        .clamp(1, MAX_WORKSPACE_FILE_LIMIT);
+    let limit = query.limit.unwrap_or(10).clamp(1, MAX_WORKSPACE_FILE_LIMIT);
     let results = workspace::search_files(query.q.as_deref().unwrap_or(""), "", limit);
     if results.get("status").and_then(|value| value.as_str()) != Some("success") {
         return Json(json!({"files": Vec::<Value>::new()}));
@@ -1709,10 +1734,7 @@ async fn workspace_preview_content(
     }
 
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        header::HeaderValue::from_static(mime),
-    );
+    headers.insert(header::CONTENT_TYPE, header::HeaderValue::from_static(mime));
     headers.insert(
         header::CACHE_CONTROL,
         header::HeaderValue::from_static("no-store"),
@@ -1791,7 +1813,9 @@ struct InstallSkillPayload {
     url: String,
 }
 
-async fn skills_list(State(state): State<Arc<AppState>>) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+async fn skills_list(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let skills = state
         .skills_manager
         .list_skills()
@@ -1860,15 +1884,14 @@ async fn skills_preview(
 
 // ── Error Log API handlers ──────────────────────────────
 
-async fn errors_list(State(state): State<Arc<AppState>>) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+async fn errors_list(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let records = state
         .error_memory
         .list_records()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    let total = state
-        .error_memory
-        .total_errors()
-        .unwrap_or(0);
+    let total = state.error_memory.total_errors().unwrap_or(0);
     let warnings = state
         .error_memory
         .active_warnings()
@@ -1880,7 +1903,9 @@ async fn errors_list(State(state): State<Arc<AppState>>) -> Result<Json<Value>, 
     })))
 }
 
-async fn errors_clear(State(state): State<Arc<AppState>>) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+async fn errors_clear(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     state
         .error_memory
         .clear()
@@ -1923,8 +1948,12 @@ async fn set_mode(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ModePayload>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let mode = AgentMode::from_str(&payload.mode)
-        .ok_or_else(|| json_error(StatusCode::BAD_REQUEST, "Invalid mode. Use: work, plan, review"))?;
+    let mode = AgentMode::from_str(&payload.mode).ok_or_else(|| {
+        json_error(
+            StatusCode::BAD_REQUEST,
+            "Invalid mode. Use: work, plan, review",
+        )
+    })?;
     *state.current_mode.write() = mode;
     state.agent.read().await.set_mode(mode);
     let mode_str = match mode {
@@ -1968,7 +1997,9 @@ async fn set_workflow(
     if !validation.valid {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
-            validation.reason.unwrap_or_else(|| "Invalid workflow".into()),
+            validation
+                .reason
+                .unwrap_or_else(|| "Invalid workflow".into()),
         ));
     }
 
@@ -2000,10 +2031,16 @@ async fn set_multi_agent(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<Value>,
 ) -> Json<Value> {
-    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if enabled && *state.one_shot_enabled.read() {
         // If one_shot is also being disabled, allow it
-        let also_disable_one_shot = payload.get("disable_one_shot").and_then(|v| v.as_bool()).unwrap_or(false);
+        let also_disable_one_shot = payload
+            .get("disable_one_shot")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         if !also_disable_one_shot {
             return Json(json!({"error": "不能同时启用 Multi-Agent 和 One Shot"}));
         }
@@ -2017,9 +2054,7 @@ async fn set_multi_agent(
 /// Suitable prompts involve multiple steps, file exploration, implementation + review,
 /// or complex reasoning. Unsuitable prompts are trivial queries, single calculations,
 /// or very short commands.
-async fn check_multi_agent_suitable(
-    Json(payload): Json<Value>,
-) -> Json<Value> {
+async fn check_multi_agent_suitable(Json(payload): Json<Value>) -> Json<Value> {
     let prompt = payload
         .get("prompt")
         .and_then(|v| v.as_str())
@@ -2045,13 +2080,29 @@ async fn check_multi_agent_suitable(
 
     // Pure calculation / single-answer queries
     let trivial_patterns = [
-        "几点了", "现在几点", "今天星期", "今天日期",
-        "what time", "what day", "today's date",
-        "你好", "hello", "hi", "hey",
-        "谢谢", "thanks", "thank you",
-        "退出", "exit", "quit",
-        "帮助", "help",
-        "clear", "清除", "重置", "reset",
+        "几点了",
+        "现在几点",
+        "今天星期",
+        "今天日期",
+        "what time",
+        "what day",
+        "today's date",
+        "你好",
+        "hello",
+        "hi",
+        "hey",
+        "谢谢",
+        "thanks",
+        "thank you",
+        "退出",
+        "exit",
+        "quit",
+        "帮助",
+        "help",
+        "clear",
+        "清除",
+        "重置",
+        "reset",
     ];
     for pat in &trivial_patterns {
         if lower.contains(pat) {
@@ -2066,7 +2117,11 @@ async fn check_multi_agent_suitable(
     let arithmetic_only = lower
         .chars()
         .all(|c| c.is_ascii_digit() || "+-*/=×÷加减乘除等于".contains(c) || c.is_whitespace());
-    if arithmetic_only && !lower.contains("文件") && !lower.contains("代码") && !lower.contains("实现") {
+    if arithmetic_only
+        && !lower.contains("文件")
+        && !lower.contains("代码")
+        && !lower.contains("实现")
+    {
         return Json(json!({
             "suitable": false,
             "reason": "pure arithmetic doesn't benefit from multi-agent decomposition"
@@ -2075,10 +2130,25 @@ async fn check_multi_agent_suitable(
 
     // Multi-step structure patterns (user explicitly describes sequential steps)
     let structural_patterns = [
-        "一个", "另一个", "第一步", "第二步", "首先", "然后", "接着", "最后",
-        "first", "then", "next", "finally",
-        "step 1", "step 2", "step1", "step2",
-        "之后", "再", "还要",
+        "一个",
+        "另一个",
+        "第一步",
+        "第二步",
+        "首先",
+        "然后",
+        "接着",
+        "最后",
+        "first",
+        "then",
+        "next",
+        "finally",
+        "step 1",
+        "step 2",
+        "step1",
+        "step2",
+        "之后",
+        "再",
+        "还要",
     ];
     for pat in &structural_patterns {
         if lower.contains(pat) && char_count >= 15 {
@@ -2088,19 +2158,59 @@ async fn check_multi_agent_suitable(
 
     // — suitability heuristics —
     let suitable_keywords = [
-        "实现", "implement", "开发", "develop",
-        "重构", "refactor", "优化", "optimize",
-        "分析", "analyze", "审查", "review", "audit",
-        "搜索", "search", "查找", "find",
-        "修复", "fix", "调试", "debug",
-        "设计", "design", "架构", "architecture",
-        "测试", "test", "部署", "deploy",
-        "文档", "document", "迁移", "migrate",
-        "添加功能", "add feature", "添加特性",
-        "修改", "modify", "change", "更新", "update",
-        "创建", "create", "新建", "build",
-        "并", "and then", "然后", "之后",
-        "多个", "multiple", "全部", "all",
+        "实现",
+        "implement",
+        "开发",
+        "develop",
+        "重构",
+        "refactor",
+        "优化",
+        "optimize",
+        "分析",
+        "analyze",
+        "审查",
+        "review",
+        "audit",
+        "搜索",
+        "search",
+        "查找",
+        "find",
+        "修复",
+        "fix",
+        "调试",
+        "debug",
+        "设计",
+        "design",
+        "架构",
+        "architecture",
+        "测试",
+        "test",
+        "部署",
+        "deploy",
+        "文档",
+        "document",
+        "迁移",
+        "migrate",
+        "添加功能",
+        "add feature",
+        "添加特性",
+        "修改",
+        "modify",
+        "change",
+        "更新",
+        "update",
+        "创建",
+        "create",
+        "新建",
+        "build",
+        "并",
+        "and then",
+        "然后",
+        "之后",
+        "多个",
+        "multiple",
+        "全部",
+        "all",
     ];
     let mut suitable = false;
     for kw in &suitable_keywords {
@@ -2150,14 +2260,49 @@ async fn check_loop_suitable(Json(payload): Json<Value>) -> Json<Value> {
     // Explicit loop/iteration keywords
     let loop_patterns = [
         // Chinese
-        "循环", "反复", "重复", "不断", "持续", "每次", "每个", "每一个", "遍历", "迭代",
-        "一直", "直到", "为止", "批量", "所有", "全部文件", "每个文件",
-        "每隔", "定时", "监控", "监听", "实时",
+        "循环",
+        "反复",
+        "重复",
+        "不断",
+        "持续",
+        "每次",
+        "每个",
+        "每一个",
+        "遍历",
+        "迭代",
+        "一直",
+        "直到",
+        "为止",
+        "批量",
+        "所有",
+        "全部文件",
+        "每个文件",
+        "每隔",
+        "定时",
+        "监控",
+        "监听",
+        "实时",
         // English
-        "loop", "iterate", "repeatedly", "until", "keep doing", "keep running",
-        "for each", "for every", "all files", "every file", "batch",
-        "continuously", "monitor", "watch for", "periodically", "in a loop",
-        "retry", "repeat", "cycle through", "poll",
+        "loop",
+        "iterate",
+        "repeatedly",
+        "until",
+        "keep doing",
+        "keep running",
+        "for each",
+        "for every",
+        "all files",
+        "every file",
+        "batch",
+        "continuously",
+        "monitor",
+        "watch for",
+        "periodically",
+        "in a loop",
+        "retry",
+        "repeat",
+        "cycle through",
+        "poll",
     ];
     for pat in &loop_patterns {
         if lower.contains(pat) {
@@ -2176,7 +2321,10 @@ async fn get_loop(State(state): State<Arc<AppState>>) -> Json<Value> {
 }
 
 async fn set_loop(State(state): State<Arc<AppState>>, Json(payload): Json<Value>) -> Json<Value> {
-    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     *state.loop_enabled.write() = enabled;
     Json(json!({"ok": true}))
 }
@@ -2191,11 +2339,16 @@ async fn set_workflow_follow(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<Value>,
 ) -> Json<Value> {
-    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     // Workflow follow is only meaningful when workflow nodes are configured
     let wf = state.workflow.read();
     if enabled && wf.nodes.is_empty() {
-        return Json(json!({"ok": false, "reason": "no workflow steps configured; add steps in the Workflow panel first"}));
+        return Json(
+            json!({"ok": false, "reason": "no workflow steps configured; add steps in the Workflow panel first"}),
+        );
     }
     drop(wf);
     *state.workflow_follow_enabled.write() = enabled;
@@ -2208,11 +2361,11 @@ async fn get_yolo(State(state): State<Arc<AppState>>) -> Json<Value> {
     Json(json!({"enabled": *state.yolo_enabled.read()}))
 }
 
-async fn set_yolo(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<Value>,
-) -> Json<Value> {
-    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+async fn set_yolo(State(state): State<Arc<AppState>>, Json(payload): Json<Value>) -> Json<Value> {
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     *state.yolo_enabled.write() = enabled;
     state.agent.read().await.set_yolo(enabled);
     Json(json!({"ok": true, "enabled": enabled}))
@@ -2229,7 +2382,10 @@ async fn set_reasoning_effort(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<Value>,
 ) -> Json<Value> {
-    let effort = payload.get("effort").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let effort = payload
+        .get("effort")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let effort_val = effort.clone();
     state.agent.read().await.set_reasoning_effort(effort);
     Json(json!({"ok": true, "effort": effort_val}))
@@ -2243,7 +2399,10 @@ async fn set_auto_model(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<Value>,
 ) -> Json<Value> {
-    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     state.agent.read().await.set_auto_model(enabled);
     Json(json!({"ok": true, "enabled": enabled}))
 }
@@ -2259,10 +2418,16 @@ async fn set_one_shot(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<Value>,
 ) -> Json<Value> {
-    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if enabled && *state.multi_agent_enabled.read() {
         // If multi_agent is also being disabled, allow it
-        let also_disable_ma = payload.get("disable_multi_agent").and_then(|v| v.as_bool()).unwrap_or(false);
+        let also_disable_ma = payload
+            .get("disable_multi_agent")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         if !also_disable_ma {
             return Json(json!({"error": "不能同时启用 One Shot 和 Multi-Agent"}));
         }
@@ -2274,14 +2439,19 @@ async fn set_one_shot(
 
 async fn get_computer_use(State(state): State<Arc<AppState>>) -> Json<Value> {
     let enabled = *state.computer_use_enabled.read();
-    Json(json!({"enabled": enabled, "available": cfg!(target_os = "macos") || cfg!(target_os = "linux")}))
+    Json(
+        json!({"enabled": enabled, "available": cfg!(target_os = "macos") || cfg!(target_os = "linux")}),
+    )
 }
 
 async fn set_computer_use(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<Value>,
 ) -> Json<Value> {
-    let enabled = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     *state.computer_use_enabled.write() = enabled;
     Json(json!({"enabled": enabled}))
 }
@@ -2303,7 +2473,10 @@ pub fn create_app(state: Arc<AppState>) -> Router {
                             .join("index.html");
                         let html = match std::fs::read_to_string(&index_path) {
                             Ok(html) if !html.trim().is_empty() => html,
-                            Ok(_) => frontend_error_html(&index_path, "The workbench index file exists but is empty."),
+                            Ok(_) => frontend_error_html(
+                                &index_path,
+                                "The workbench index file exists but is empty.",
+                            ),
                             Err(err) => frontend_error_html(
                                 &index_path,
                                 &format!("The workbench index file could not be read: {err}."),
@@ -2329,10 +2502,16 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/chat", post(chat))
         .route("/api/tasks/{task_id}", get(task))
         .route("/api/sessions", get(sessions))
-        .route("/api/sessions/{index}/checkpoints", get(session_checkpoints))
+        .route(
+            "/api/sessions/{index}/checkpoints",
+            get(session_checkpoints),
+        )
         .route("/api/sessions/restore", post(restore_session))
         .route("/api/sessions/fork", post(fork_session_endpoint))
-        .route("/api/sessions/{index}/delete", post(delete_session_endpoint))
+        .route(
+            "/api/sessions/{index}/delete",
+            post(delete_session_endpoint),
+        )
         .route("/api/stop", post(stop_agent))
         .route("/api/changes", get(list_changes))
         .route("/api/diff", post(show_diff))
@@ -2340,7 +2519,10 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/workspace/tree", get(workspace_tree))
         .route("/api/workspace/files", get(workspace_files))
         .route("/api/workspace/preview", get(workspace_preview))
-        .route("/api/workspace/preview-content", get(workspace_preview_content))
+        .route(
+            "/api/workspace/preview-content",
+            get(workspace_preview_content),
+        )
         .route("/api/plan/status", get(plan_status))
         .route("/api/upload", post(upload_image))
         .route("/api/skills", get(skills_list))
@@ -2359,7 +2541,10 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .route("/api/workflow/reset", post(reset_workflow))
         .route("/api/multi-agent", get(get_multi_agent))
         .route("/api/multi-agent", post(set_multi_agent))
-        .route("/api/multi-agent/suitable", post(check_multi_agent_suitable))
+        .route(
+            "/api/multi-agent/suitable",
+            post(check_multi_agent_suitable),
+        )
         .route("/api/loop/suitable", post(check_loop_suitable))
         .route("/api/loop", get(get_loop))
         .route("/api/loop", post(set_loop))

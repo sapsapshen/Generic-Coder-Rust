@@ -9,6 +9,17 @@ import { WorkbenchService } from '../services/workbenchService';
 export class ComposerPart extends Disposable {
   private mentionSuggestions: Array<{ name: string; path: string; rel: string }> = [];
   private loopCheckTimer: ReturnType<typeof setTimeout> | null = null;
+  private slashSelectedIndex = 0;
+
+  private static readonly SLASH_COMMANDS = [
+    { cmd: '/new',       desc: 'Start a fresh session (clears context)' },
+    { cmd: '/fork',      desc: 'Fork the current session into a new branch' },
+    { cmd: '/continue',  desc: '/continue <n>  — restore and resume session #n' },
+    { cmd: '/plan',      desc: 'Switch to Plan mode (explore without modifying files)' },
+    { cmd: '/work',      desc: 'Switch to Work mode (implement and execute)' },
+    { cmd: '/review',    desc: 'Switch to Review mode (audit code for issues)' },
+    { cmd: '/clear',     desc: 'Clear error memory and avoidance hints' },
+  ];
 
   private readonly layoutService: LayoutService;
   private readonly workbenchService: WorkbenchService;
@@ -37,16 +48,55 @@ export class ComposerPart extends Disposable {
     const autoModelToggle = this.layoutService.getElement<HTMLInputElement>('auto-model-toggle');
     const effortGroup = this.layoutService.getElement<HTMLDivElement>('effort-group');
 
+    // YOLO warning dismiss button
+    const yoloWarningOff = this.layoutService.getElement<HTMLButtonElement>('yolo-warning-off');
+    yoloWarningOff.addEventListener('click', () => {
+      void this.workbenchService.toggleYolo(false);
+    });
+
     input.addEventListener('input', async () => {
       this.workbenchService.setInputValue(input.value);
+      this.updateSlashHints(input);
       await this.refreshMentionSuggestions();
       this.scheduleLoopCheck(input.value);
     });
 
     input.addEventListener('keydown', async (event) => {
+      const slashHints = this.layoutService.getElement<HTMLDivElement>('slash-hints');
+      if (!slashHints.hidden) {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          this.slashSelectedIndex = Math.min(this.slashSelectedIndex + 1, this.visibleSlashCommands(input.value).length - 1);
+          this.renderSlashHints(input, slashHints);
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          this.slashSelectedIndex = Math.max(this.slashSelectedIndex - 1, 0);
+          this.renderSlashHints(input, slashHints);
+          return;
+        }
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          const cmds = this.visibleSlashCommands(input.value);
+          if (cmds[this.slashSelectedIndex]) {
+            event.preventDefault();
+            input.value = cmds[this.slashSelectedIndex].cmd + ' ';
+            this.workbenchService.setInputValue(input.value);
+            slashHints.hidden = true;
+            return;
+          }
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          slashHints.hidden = true;
+          return;
+        }
+      }
+
       const mod = event.metaKey || event.ctrlKey;
       if (mod && event.key.toLowerCase() === 'enter') {
         event.preventDefault();
+        slashHints.hidden = true;
         await this.workbenchService.sendPrompt(input.value);
         return;
       }
@@ -169,6 +219,10 @@ export class ComposerPart extends Disposable {
       ? 'YOLO: AI executes all actions autonomously without confirmation'
       : 'Enable YOLO mode for fully autonomous execution';
 
+    // Show/hide YOLO warning banner
+    const yoloWarning = this.layoutService.getElement<HTMLDivElement>('yolo-warning');
+    yoloWarning.hidden = !state.yoloEnabled;
+
     autoModelToggle.checked = state.autoModelEnabled;
     autoModelToggle.title = state.autoModelEnabled
       ? 'DeepSeek-style automatic model + reasoning routing is active'
@@ -211,5 +265,51 @@ export class ComposerPart extends Disposable {
     }
     const query = before.slice(atIndex + 1).trim();
     this.mentionSuggestions = await this.workbenchService.fetchMentionSuggestions(query);
+  }
+
+  private visibleSlashCommands(text: string): typeof ComposerPart.SLASH_COMMANDS {
+    const lower = text.toLowerCase();
+    return ComposerPart.SLASH_COMMANDS.filter((c) => c.cmd.startsWith(lower) || lower === '/');
+  }
+
+  private updateSlashHints(input: HTMLTextAreaElement): void {
+    const slashHints = this.layoutService.getElement<HTMLDivElement>('slash-hints');
+    const text = input.value;
+    if (!text.startsWith('/') || text.includes(' ') || text.includes('\n')) {
+      slashHints.hidden = true;
+      return;
+    }
+    this.slashSelectedIndex = 0;
+    this.renderSlashHints(input, slashHints);
+  }
+
+  private renderSlashHints(input: HTMLTextAreaElement, container: HTMLDivElement): void {
+    const cmds = this.visibleSlashCommands(input.value);
+    if (cmds.length === 0) {
+      container.hidden = true;
+      return;
+    }
+    container.hidden = false;
+    container.innerHTML = cmds
+      .map(
+        (c, i) => `
+          <button class="slash-hints__item${i === this.slashSelectedIndex ? ' is-selected' : ''}" data-slash-cmd="${c.cmd}">
+            <span class="slash-hints__cmd">${c.cmd}</span>
+            <span class="slash-hints__desc">${c.desc}</span>
+          </button>`,
+      )
+      .join('');
+    container.querySelectorAll<HTMLButtonElement>('[data-slash-cmd]').forEach((btn, i) => {
+      btn.addEventListener('mouseenter', () => {
+        this.slashSelectedIndex = i;
+        this.renderSlashHints(input, container);
+      });
+      btn.addEventListener('click', () => {
+        input.value = btn.dataset.slashCmd + ' ';
+        this.workbenchService.setInputValue(input.value);
+        container.hidden = true;
+        input.focus();
+      });
+    });
   }
 }

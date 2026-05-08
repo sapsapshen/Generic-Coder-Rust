@@ -13,13 +13,16 @@
 
 pub mod acp;
 pub mod agent;
-pub mod oneshot;
 pub mod config;
+pub mod dream;
 pub mod error_memory;
 pub mod llm;
+pub mod mcp;
 pub mod media;
+pub mod oneshot;
 pub mod provider_profiles;
 pub mod remote;
+pub mod semantic;
 pub mod session_store;
 pub mod skills;
 pub mod tools;

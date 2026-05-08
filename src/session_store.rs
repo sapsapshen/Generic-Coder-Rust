@@ -110,11 +110,16 @@ pub fn load_sessions() -> Vec<PersistedSession> {
 }
 
 pub fn get_session(index: usize) -> Option<PersistedSession> {
-    load_sessions().into_iter().find(|session| session.index == index)
+    load_sessions()
+        .into_iter()
+        .find(|session| session.index == index)
 }
 
 pub fn get_checkpoint(session_index: usize, checkpoint_index: usize) -> Option<SessionCheckpoint> {
-    get_session(session_index)?.checkpoints.into_iter().find(|checkpoint| checkpoint.index == checkpoint_index)
+    get_session(session_index)?
+        .checkpoints
+        .into_iter()
+        .find(|checkpoint| checkpoint.index == checkpoint_index)
 }
 
 pub fn list_checkpoints(session_index: usize) -> Vec<SessionCheckpoint> {
@@ -132,13 +137,22 @@ pub fn delete_session(index: usize) -> Result<bool> {
     }
 
     fs::create_dir_all(config::config_dir())?;
-    fs::write(sessions_file_path(), serde_json::to_string_pretty(&sessions)?)?;
+    fs::write(
+        sessions_file_path(),
+        serde_json::to_string_pretty(&sessions)?,
+    )?;
     Ok(true)
 }
 
 pub fn usage_from_value(value: &Value) -> Option<TokenUsage> {
-    let prompt_tokens = value.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-    let completion_tokens = value.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+    let prompt_tokens = value
+        .get("prompt_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let completion_tokens = value
+        .get("completion_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     let cached_tokens = value
         .get("prompt_cache_hit_tokens")
         .and_then(|v| v.as_u64())
@@ -177,7 +191,10 @@ pub fn upsert_session(
     let preview = summarize_messages(messages);
     let rounds = count_rounds(messages);
 
-    let session = if let Some(existing) = sessions.iter_mut().find(|existing| existing.index == session_index) {
+    let session = if let Some(existing) = sessions
+        .iter_mut()
+        .find(|existing| existing.index == session_index)
+    {
         let mut usage_totals = existing.usage_totals.clone();
         if let Some(ref usage) = last_usage {
             usage_totals.add_turn(usage);
@@ -189,7 +206,10 @@ pub fn upsert_session(
             .map(|checkpoint| checkpoint.messages != messages)
             .unwrap_or(true);
         if append_checkpoint {
-            let checkpoint_index = checkpoints.last().map(|checkpoint| checkpoint.index + 1).unwrap_or(1);
+            let checkpoint_index = checkpoints
+                .last()
+                .map(|checkpoint| checkpoint.index + 1)
+                .unwrap_or(1);
             checkpoints.push(SessionCheckpoint {
                 index: checkpoint_index,
                 preview: preview.clone(),
@@ -251,7 +271,10 @@ pub fn upsert_session(
         }
     };
 
-    if !sessions.iter().any(|existing| existing.index == session_index) {
+    if !sessions
+        .iter()
+        .any(|existing| existing.index == session_index)
+    {
         sessions.push(session.clone());
     }
 
@@ -262,21 +285,38 @@ pub fn upsert_session(
     }
     sessions.sort_by_key(|existing| existing.index);
 
-    fs::write(sessions_file_path(), serde_json::to_string_pretty(&sessions)?)?;
+    fs::write(
+        sessions_file_path(),
+        serde_json::to_string_pretty(&sessions)?,
+    )?;
     Ok(session)
 }
 
 pub fn fork_session(index: usize, checkpoint_index: Option<usize>) -> Result<PersistedSession> {
     fs::create_dir_all(config::config_dir())?;
     let mut sessions = load_sessions();
-    let Some(source) = sessions.iter().find(|session| session.index == index).cloned() else {
+    let Some(source) = sessions
+        .iter()
+        .find(|session| session.index == index)
+        .cloned()
+    else {
         anyhow::bail!("Session {index} not found");
     };
 
     let snapshot = checkpoint_index
-        .and_then(|checkpoint| source.checkpoints.iter().find(|entry| entry.index == checkpoint).cloned())
+        .and_then(|checkpoint| {
+            source
+                .checkpoints
+                .iter()
+                .find(|entry| entry.index == checkpoint)
+                .cloned()
+        })
         .unwrap_or_else(|| SessionCheckpoint {
-            index: source.checkpoints.last().map(|entry| entry.index).unwrap_or(1),
+            index: source
+                .checkpoints
+                .last()
+                .map(|entry| entry.index)
+                .unwrap_or(1),
             preview: source.preview.clone(),
             rounds: source.rounds,
             saved_at: source.saved_at,
@@ -320,6 +360,9 @@ pub fn fork_session(index: usize, checkpoint_index: Option<usize>) -> Result<Per
         sessions.drain(0..overflow);
     }
     sessions.sort_by_key(|existing| existing.index);
-    fs::write(sessions_file_path(), serde_json::to_string_pretty(&sessions)?)?;
+    fs::write(
+        sessions_file_path(),
+        serde_json::to_string_pretty(&sessions)?,
+    )?;
     Ok(forked)
 }

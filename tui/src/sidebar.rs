@@ -1,9 +1,6 @@
 //! Left sidebar rendering for Generic Coder TUI.
 
-use ratatui::{
-    prelude::*,
-    widgets::*,
-};
+use ratatui::{prelude::*, widgets::*};
 
 use crate::app::App;
 
@@ -27,19 +24,25 @@ pub fn draw(
     frame.render_widget(block, area);
 
     let sections = Layout::vertical([
-        Constraint::Length(3),  // Brand
-        Constraint::Length(6),  // Modes
-        Constraint::Length(5),  // Context
-        Constraint::Length(6),  // Inference
-        Constraint::Min(0),     // Workspace tree
-        Constraint::Length(3),  // Status
+        Constraint::Length(3), // Brand
+        Constraint::Length(6), // Modes
+        Constraint::Length(5), // Context
+        Constraint::Length(6), // Inference
+        Constraint::Min(0),    // Workspace tree
+        Constraint::Length(3), // Status
     ])
     .split(inner);
 
     // ── Brand ────────────────────────────────────────
     let brand_lines = vec![
-        Line::from(Span::styled("Generic Coder", Style::default().fg(accent).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("Autonomous cockpit", Style::default().fg(text_dim))),
+        Line::from(Span::styled(
+            "Generic Coder",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "Autonomous cockpit",
+            Style::default().fg(text_dim),
+        )),
     ];
     frame.render_widget(Paragraph::new(brand_lines), sections[0]);
 
@@ -58,7 +61,10 @@ pub fn draw(
 
     // F1 Work
     let work_style = if matches!(app.current_mode, generic_coder::workflow::AgentMode::Work) {
-        Style::default().fg(bg).bg(accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(bg)
+            .bg(accent)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(text)
     };
@@ -95,14 +101,12 @@ pub fn draw(
     );
 
     // ── Context ───────────────────────────────────────
-    let ctx_chunks = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(4),
-    ])
-    .split(sections[2]);
+    let ctx_chunks =
+        Layout::vertical([Constraint::Length(1), Constraint::Length(4)]).split(sections[2]);
 
     frame.render_widget(
-        Paragraph::new("AGENT CONTEXT").style(Style::default().fg(text_dim).add_modifier(Modifier::BOLD)),
+        Paragraph::new("AGENT CONTEXT")
+            .style(Style::default().fg(text_dim).add_modifier(Modifier::BOLD)),
         ctx_chunks[0],
     );
 
@@ -112,14 +116,28 @@ pub fn draw(
         generic_coder::workflow::AgentMode::Review => "Review",
     };
     let ctx_text = vec![
-        Line::from(Span::styled(format!("  Mode:   {mode_label}"), Style::default().fg(text))),
-        Line::from(Span::styled(format!("  Model:  {}", app.model_label), Style::default().fg(text_dim))),
         Line::from(Span::styled(
-            format!("  Auto:   {}", if app.auto_model_enabled { "ON" } else { "OFF" }),
+            format!("  Mode:   {mode_label}"),
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            format!("  Model:  {}", app.model_label),
             Style::default().fg(text_dim),
         )),
         Line::from(Span::styled(
-            format!("  Sess:   {}", app.active_session_index.map(|index| format!("#{index}")).unwrap_or_else(|| "new".into())),
+            format!(
+                "  Auto:   {}",
+                if app.auto_model_enabled { "ON" } else { "OFF" }
+            ),
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            format!(
+                "  Sess:   {}",
+                app.active_session_index
+                    .map(|index| format!("#{index}"))
+                    .unwrap_or_else(|| "new".into())
+            ),
             Style::default().fg(text_dim),
         )),
         Line::from(Span::styled(
@@ -130,9 +148,11 @@ pub fn draw(
     frame.render_widget(Paragraph::new(ctx_text), ctx_chunks[1]);
 
     // ── Inference panel ───────────────────────────────
-    let inference_chunks = Layout::vertical([Constraint::Length(1), Constraint::Length(5)]).split(sections[3]);
+    let inference_chunks =
+        Layout::vertical([Constraint::Length(1), Constraint::Length(5)]).split(sections[3]);
     frame.render_widget(
-        Paragraph::new("INFERENCE").style(Style::default().fg(text_dim).add_modifier(Modifier::BOLD)),
+        Paragraph::new("INFERENCE")
+            .style(Style::default().fg(text_dim).add_modifier(Modifier::BOLD)),
         inference_chunks[0],
     );
     let cached = app.session_usage.cached_tokens;
@@ -144,12 +164,17 @@ pub fn draw(
     };
     let last_turn = app
         .last_usage
-        .map(|(prompt_tokens, completion_tokens, cached_tokens)| format!("↑{prompt_tokens} ↓{completion_tokens} 💾{cached_tokens}"))
+        .map(|(prompt_tokens, completion_tokens, cached_tokens)| {
+            format!("↑{prompt_tokens} ↓{completion_tokens} 💾{cached_tokens}")
+        })
         .unwrap_or_else(|| "no completed turn".into());
     let inference_text = vec![
         Line::from(Span::styled(last_turn, Style::default().fg(text))),
         Line::from(Span::styled(
-            format!("  Session: ↑{} ↓{}", prompt, app.session_usage.completion_tokens),
+            format!(
+                "  Session: ↑{} ↓{}",
+                prompt, app.session_usage.completion_tokens
+            ),
             Style::default().fg(text_dim),
         )),
         Line::from(Span::styled(
@@ -161,7 +186,14 @@ pub fn draw(
             Style::default().fg(text_dim),
         )),
         Line::from(Span::styled(
-            format!("  Points:  {}", app.sessions.iter().find(|session| Some(session.index) == app.active_session_index).map(|session| session.checkpoint_count).unwrap_or(0)),
+            format!(
+                "  Points:  {}",
+                app.sessions
+                    .iter()
+                    .find(|session| Some(session.index) == app.active_session_index)
+                    .map(|session| session.checkpoint_count)
+                    .unwrap_or(0)
+            ),
             Style::default().fg(text_dim),
         )),
     ];
@@ -217,12 +249,19 @@ pub fn draw(
         vec![
             Line::from(Span::styled(status_text, Style::default().fg(status_color))),
             Line::from(Span::styled(
-                format!("→ {} / {}", route.model, route.reasoning_effort.as_deref().unwrap_or("default")),
+                format!(
+                    "→ {} / {}",
+                    route.model,
+                    route.reasoning_effort.as_deref().unwrap_or("default")
+                ),
                 Style::default().fg(text_dim),
             )),
         ]
     } else {
-        vec![Line::from(Span::styled(status_text, Style::default().fg(status_color)))]
+        vec![Line::from(Span::styled(
+            status_text,
+            Style::default().fg(status_color),
+        ))]
     };
     frame.render_widget(Paragraph::new(status_lines), sections[5]);
 }

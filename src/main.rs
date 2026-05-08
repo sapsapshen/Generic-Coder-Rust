@@ -145,6 +145,7 @@ async fn initialize_runtime(
     let skills_summary = skills_mgr.active_skills_summary();
     let error_memory = ErrorMemory::new(project_dir);
     let error_summary = error_memory.avoidance_summary();
+    let dream_context = generic_coder::dream::recent_context(project_dir, 5);
     let mut combined = String::new();
     if !skills_summary.is_empty() {
         combined.push_str(&skills_summary);
@@ -153,8 +154,11 @@ async fn initialize_runtime(
         combined.push('\n');
         combined.push_str(&error_summary);
     }
-    let system_prompt =
-        config::get_system_prompt_with_skills(project_dir, Some(&combined));
+    if !dream_context.is_empty() {
+        combined.push('\n');
+        combined.push_str(&dream_context);
+    }
+    let system_prompt = config::get_system_prompt_with_skills(project_dir, Some(&combined));
     let tools_schema = config::load_tool_schema(project_dir, None);
 
     let mut agent = GenericAgent::new();

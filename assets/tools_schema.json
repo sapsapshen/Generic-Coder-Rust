@@ -172,6 +172,72 @@
       "case_sensitive": {"type": "boolean", "description": "Case-sensitive search.", "default": true}},
       "required": ["pattern"]}}},
   {"type": "function", "function": {
+    "name": "semantic_search",
+    "description": "Lightweight semantic code search. Finds likely symbols, definitions, and relevant files without a heavyweight vector index.",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "Natural-language or symbol-oriented query, e.g. 'auth middleware' or 'UserService'."},
+      "path": {"type": "string", "description": "Optional search root. Defaults to the active workspace."},
+      "max_results": {"type": "integer", "description": "Maximum number of ranked matches.", "default": 25}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "lsp_find_definition",
+    "description": "High-value language-aware definition lookup. Uses the lightweight semantic layer to find likely symbol definitions.",
+    "parameters": {"type": "object", "properties": {
+      "symbol": {"type": "string", "description": "Symbol name to locate."},
+      "path": {"type": "string", "description": "Optional workspace subpath to narrow the search."},
+      "max_results": {"type": "integer", "description": "Maximum number of candidate definitions.", "default": 25}},
+      "required": ["symbol"]}}},
+  {"type": "function", "function": {
+    "name": "lsp_find_references",
+    "description": "High-value language-aware reference lookup. Finds likely references and marks detected definitions.",
+    "parameters": {"type": "object", "properties": {
+      "symbol": {"type": "string", "description": "Symbol name to search for."},
+      "path": {"type": "string", "description": "Optional workspace subpath to narrow the search."},
+      "max_results": {"type": "integer", "description": "Maximum number of references to return.", "default": 50}},
+      "required": ["symbol"]}}},
+  {"type": "function", "function": {
+    "name": "lsp_get_diagnostics",
+    "description": "Get structured diagnostics for the current Rust workspace. Uses cargo check JSON output as a lightweight diagnostics backend.",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "Workspace path. Defaults to the active workspace."},
+      "max_results": {"type": "integer", "description": "Maximum number of diagnostics to return.", "default": 50}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "lsp_rename_preview",
+    "description": "Preview a safe rename before editing files. Returns candidate edits for definitions and references without applying them.",
+    "parameters": {"type": "object", "properties": {
+      "symbol": {"type": "string", "description": "Existing symbol name."},
+      "new_name": {"type": "string", "description": "Proposed new symbol name."},
+      "path": {"type": "string", "description": "Optional workspace subpath to narrow the search."},
+      "max_results": {"type": "integer", "description": "Maximum number of preview edits.", "default": 25}},
+      "required": ["symbol", "new_name"]}}},
+  {"type": "function", "function": {
+    "name": "run_tests",
+    "description": "Run the workspace test command and return structured failure feedback for autonomous fix loops. Prefer this over raw shell commands when validating changes.",
+    "parameters": {"type": "object", "properties": {
+      "command": {"type": "string", "description": "Optional explicit test command. If omitted, the workspace default is inferred."},
+      "path": {"type": "string", "description": "Optional workspace path. Defaults to the active workspace."},
+      "max_output_chars": {"type": "integer", "description": "Maximum output characters to keep in the result.", "default": 20000}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "mcp_list_servers",
+    "description": "List configured MCP servers discovered from local config files.",
+    "parameters": {"type": "object", "properties": {}, "required": []}}},
+  {"type": "function", "function": {
+    "name": "mcp_list_tools",
+    "description": "Initialize one or more MCP servers and list the tools they expose.",
+    "parameters": {"type": "object", "properties": {
+      "server": {"type": "string", "description": "Optional server name. If omitted, all enabled MCP servers are queried."}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "mcp_call_tool",
+    "description": "Call a tool exposed by a configured MCP server.",
+    "parameters": {"type": "object", "properties": {
+      "server": {"type": "string", "description": "Configured MCP server name."},
+      "tool": {"type": "string", "description": "Remote MCP tool name."},
+      "arguments": {"type": "object", "description": "Arguments object passed through to the MCP tool."}},
+      "required": ["server", "tool"]}}},
+  {"type": "function", "function": {
     "name": "git_status",
     "description": "Show working tree status (porcelain format). See what files are modified, staged, or untracked.",
     "parameters": {"type": "object", "properties": {

@@ -73,8 +73,7 @@ impl SkillsManager {
     pub fn load_meta(&self) -> Result<SkillsMeta, String> {
         let data = std::fs::read_to_string(&self.meta_path)
             .map_err(|e| format!("Failed to read skills meta: {e}"))?;
-        serde_json::from_str(&data)
-            .map_err(|e| format!("Failed to parse skills meta: {e}"))
+        serde_json::from_str(&data).map_err(|e| format!("Failed to parse skills meta: {e}"))
     }
 
     /// Save meta to disk
@@ -110,13 +109,9 @@ impl SkillsManager {
             }
         }
         // Generic: take last two path segments
-        let parts: Vec<&str> = url
-            .split('/')
-            .filter(|s| !s.is_empty())
-            .collect();
+        let parts: Vec<&str> = url.split('/').filter(|s| !s.is_empty()).collect();
         if parts.len() >= 2 {
-            return format!("{}_{}", parts[parts.len() - 2], parts[parts.len() - 1])
-                .to_lowercase();
+            return format!("{}_{}", parts[parts.len() - 2], parts[parts.len() - 1]).to_lowercase();
         }
         if let Some(last) = parts.last() {
             return last.to_lowercase();
@@ -168,7 +163,11 @@ impl SkillsManager {
         let now = Utc::now().to_rfc3339();
 
         // Determine download URL: GitHub URL -> raw zip download
-        let download_url = if url.contains("github.com") && !url.ends_with(".md") && !url.ends_with(".json") && !url.ends_with(".yaml") {
+        let download_url = if url.contains("github.com")
+            && !url.ends_with(".md")
+            && !url.ends_with(".json")
+            && !url.ends_with(".yaml")
+        {
             // Convert to archive download
             let clean = url.trim().trim_end_matches('/').trim_end_matches(".git");
             // Extract owner/repo
@@ -297,7 +296,9 @@ impl SkillsManager {
             .split_whitespace()
             .map(|w| {
                 let mut c = w.chars();
-                c.next().map(|f| f.to_uppercase().to_string() + c.as_str()).unwrap_or_default()
+                c.next()
+                    .map(|f| f.to_uppercase().to_string() + c.as_str())
+                    .unwrap_or_default()
             })
             .collect::<Vec<_>>()
             .join(" ");
@@ -489,11 +490,7 @@ impl SkillsManager {
             Err(_) => return String::new(),
         };
 
-        let enabled: Vec<&SkillEntry> = meta
-            .skills
-            .values()
-            .filter(|s| s.enabled)
-            .collect();
+        let enabled: Vec<&SkillEntry> = meta.skills.values().filter(|s| s.enabled).collect();
 
         if enabled.is_empty() {
             return String::new();
@@ -507,7 +504,11 @@ impl SkillsManager {
         ];
 
         for s in &enabled {
-            let desc = if s.description.is_empty() { "-" } else { &s.description };
+            let desc = if s.description.is_empty() {
+                "-"
+            } else {
+                &s.description
+            };
             let trigger = match s.name.as_str() {
                 "webfetch" => "Reading URLs, fetching web content",
                 "create-skill" => "User wants to create a new skill",
@@ -528,7 +529,6 @@ impl SkillsManager {
         lines.join("\n")
     }
 }
-
 
 #[cfg(test)]
 mod tests {

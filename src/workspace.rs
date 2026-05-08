@@ -430,9 +430,9 @@ impl WorkspaceManager {
             }
         }
 
-        std::env::current_dir().ok().map(|path| {
-            fs::canonicalize(&path).unwrap_or(path)
-        })
+        std::env::current_dir()
+            .ok()
+            .map(|path| fs::canonicalize(&path).unwrap_or(path))
     }
 
     fn active_workspace_root(&self) -> Option<PathBuf> {
@@ -919,7 +919,10 @@ mod tests {
             session_workspace_explicit: false,
         };
 
-        assert_eq!(manager.current_process_root().unwrap(), fs::canonicalize(&temp).unwrap());
+        assert_eq!(
+            manager.current_process_root().unwrap(),
+            fs::canonicalize(&temp).unwrap()
+        );
 
         if let Some(value) = original {
             std::env::set_var("GENERIC_CODER_PROJECT_DIR", value);

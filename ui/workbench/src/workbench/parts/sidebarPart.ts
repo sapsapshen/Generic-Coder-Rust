@@ -638,8 +638,14 @@ export class SidebarPart extends Disposable {
         <label class="field"><span>Provider</span><input id="provider-input" class="text-input" value="${escapeHtml(state.llmForm.provider || '')}" /></label>
         <label class="field"><span>Display name</span><input id="display-name-input" class="text-input" value="${escapeHtml(state.llmForm.name || '')}" /></label>
         <label class="field"><span>Model name</span><input id="model-name-input" class="text-input" value="${escapeHtml(state.llmForm.model || '')}" /></label>
-        <label class="field"><span>Base URL</span><input id="base-url-input" class="text-input" value="${escapeHtml(state.llmForm.apibase || '')}" /></label>
-        <label class="field"><span>API Key</span><input id="api-key-input" class="text-input" type="password" value="${escapeHtml(state.llmForm.apikey || '')}" /></label>
+        <label class="field"><span>Base URL</span><input id="base-url-input" class="text-input" value="${escapeHtml(state.llmForm.apibase || '')}" title="The API endpoint URL, e.g. https://api.openai.com/v1" /></label>
+        <div class="field api-key-group">
+          <span>API Key</span>
+          <div class="input-group">
+            <input id="api-key-input" class="text-input" type="password" value="${escapeHtml(state.llmForm.apikey || '')}" autocomplete="off" />
+            <button type="button" id="api-key-toggle" class="api-key-toggle text-button" title="Show/hide API key">👁</button>
+          </div>
+        </div>
         <button id="save-model-button" class="primary-button">Save model settings</button>
       </section>
       <section class="sidebar-section">
@@ -684,6 +690,19 @@ export class SidebarPart extends Disposable {
         apibase: (container.querySelector('#base-url-input') as HTMLInputElement).value.trim(),
         apikey: (container.querySelector('#api-key-input') as HTMLInputElement).value.trim(),
       });
+    });
+    container.querySelector('#api-key-toggle')?.addEventListener('click', () => {
+      const apiKeyInput = container.querySelector('#api-key-input') as HTMLInputElement;
+      const toggleBtn = container.querySelector('#api-key-toggle') as HTMLButtonElement;
+      if (apiKeyInput.type === 'password') {
+        apiKeyInput.type = 'text';
+        toggleBtn.textContent = '🙈';
+        toggleBtn.title = 'Hide API key';
+      } else {
+        apiKeyInput.type = 'password';
+        toggleBtn.textContent = '👁';
+        toggleBtn.title = 'Show API key';
+      }
     });
     container.querySelector('#save-workspace-button')?.addEventListener('click', () => {
       void this.workbenchService.saveWorkspaceSettings({

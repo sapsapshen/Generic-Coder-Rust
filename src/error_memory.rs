@@ -75,7 +75,10 @@ impl ErrorRecord {
             "timeout"
         } else if lower.contains("connection") || lower.contains("refused") {
             "connection"
-        } else if lower.contains("parse") || lower.contains("invalid") || lower.contains("malformed") {
+        } else if lower.contains("parse")
+            || lower.contains("invalid")
+            || lower.contains("malformed")
+        {
             "parse_error"
         } else if lower.contains("http") && lower.contains("error") {
             "http_error"
@@ -266,7 +269,10 @@ impl ErrorMemory {
         for w in &warnings {
             lines.push(format!(
                 "- **{}** (×{}, last: {}): {}",
-                w.summary, w.count, &w.last_seen[..10], w.avoidance_hint
+                w.summary,
+                w.count,
+                &w.last_seen[..10],
+                w.avoidance_hint
             ));
         }
 

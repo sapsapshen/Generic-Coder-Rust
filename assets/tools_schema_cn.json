@@ -112,6 +112,72 @@
       "case_sensitive": {"type": "boolean", "description": "是否区分大小写。", "default": true}},
       "required": ["pattern"]}}},
   {"type": "function", "function": {
+    "name": "semantic_search",
+    "description": "轻量语义搜索。基于本地符号抽取和结构化评分，查找相关符号、定义和文件，不依赖重型向量索引。",
+    "parameters": {"type": "object", "properties": {
+      "query": {"type": "string", "description": "自然语言或符号查询，如 '认证中间件'、'UserService'。"},
+      "path": {"type": "string", "description": "可选搜索根目录，默认当前活动 workspace。"},
+      "max_results": {"type": "integer", "description": "最大返回数量。", "default": 25}},
+      "required": ["query"]}}},
+  {"type": "function", "function": {
+    "name": "lsp_find_definition",
+    "description": "高价值定义查找工具。当前基于轻量语义层实现，用于查找符号定义位置。",
+    "parameters": {"type": "object", "properties": {
+      "symbol": {"type": "string", "description": "要查找的符号名。"},
+      "path": {"type": "string", "description": "可选搜索范围。"},
+      "max_results": {"type": "integer", "description": "最大候选定义数量。", "default": 25}},
+      "required": ["symbol"]}}},
+  {"type": "function", "function": {
+    "name": "lsp_find_references",
+    "description": "高价值引用查找工具。返回可能的引用位置，并标记检测到的定义行。",
+    "parameters": {"type": "object", "properties": {
+      "symbol": {"type": "string", "description": "要搜索的符号名。"},
+      "path": {"type": "string", "description": "可选搜索范围。"},
+      "max_results": {"type": "integer", "description": "最大返回数量。", "default": 50}},
+      "required": ["symbol"]}}},
+  {"type": "function", "function": {
+    "name": "lsp_get_diagnostics",
+    "description": "获取结构化诊断信息。当前先聚焦 Rust，底层使用 cargo check 的 JSON 输出。",
+    "parameters": {"type": "object", "properties": {
+      "path": {"type": "string", "description": "workspace 路径，默认当前活动 workspace。"},
+      "max_results": {"type": "integer", "description": "最大返回诊断条数。", "default": 50}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "lsp_rename_preview",
+    "description": "重命名预览工具。只返回定义和引用的候选修改，不直接改文件。",
+    "parameters": {"type": "object", "properties": {
+      "symbol": {"type": "string", "description": "原始符号名。"},
+      "new_name": {"type": "string", "description": "新符号名。"},
+      "path": {"type": "string", "description": "可选搜索范围。"},
+      "max_results": {"type": "integer", "description": "最大预览修改数量。", "default": 25}},
+      "required": ["symbol", "new_name"]}}},
+  {"type": "function", "function": {
+    "name": "run_tests",
+    "description": "运行工作区测试命令，并返回结构化失败反馈，供 Agent 形成稳定的测试驱动修复闭环。",
+    "parameters": {"type": "object", "properties": {
+      "command": {"type": "string", "description": "可选显式测试命令；不传则自动推断。"},
+      "path": {"type": "string", "description": "可选工作区路径，默认当前活动 workspace。"},
+      "max_output_chars": {"type": "integer", "description": "保留的最大输出字符数。", "default": 20000}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "mcp_list_servers",
+    "description": "列出本地配置中发现的 MCP 服务器。",
+    "parameters": {"type": "object", "properties": {}, "required": []}}},
+  {"type": "function", "function": {
+    "name": "mcp_list_tools",
+    "description": "初始化一个或多个 MCP 服务器，并列出它们暴露的工具。",
+    "parameters": {"type": "object", "properties": {
+      "server": {"type": "string", "description": "可选服务器名；不传则查询所有已启用 MCP 服务器。"}},
+      "required": []}}},
+  {"type": "function", "function": {
+    "name": "mcp_call_tool",
+    "description": "调用配置好的 MCP 服务器上的远程工具。",
+    "parameters": {"type": "object", "properties": {
+      "server": {"type": "string", "description": "MCP 服务器名。"},
+      "tool": {"type": "string", "description": "远程工具名。"},
+      "arguments": {"type": "object", "description": "传递给 MCP 工具的参数对象。"}},
+      "required": ["server", "tool"]}}},
+  {"type": "function", "function": {
     "name": "web_search",
     "description": "搜索公开网页并返回结构化标题、链接和摘要。",
     "parameters": {"type": "object", "properties": {

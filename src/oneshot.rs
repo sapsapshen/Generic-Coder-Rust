@@ -4,10 +4,10 @@
 //! the agent selects the best one and executes it. Roadblocks trigger
 //! re-brainstorming. Stops when brainstorming is exhausted (no new options).
 
-use std::collections::HashSet;
-use std::sync::{Arc, RwLock};
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
 use crate::agent::{agent_runner_loop, AgentHandler, LlmClient};
@@ -107,11 +107,7 @@ pub async fn run_one_shot_task(
 
     for cycle in 1..=config.max_brainstorm_cycles {
         // ── Phase 1: Brainstorm ──────────────────────────────────────────
-        send_oneshot_event(
-            &display_tx,
-            &OneShotEvent::BrainstormingStart { cycle },
-        )
-        .await;
+        send_oneshot_event(&display_tx, &OneShotEvent::BrainstormingStart { cycle }).await;
 
         let seen_list: Vec<String> = seen_options.iter().cloned().collect();
         let brainstorm_prompt = format!(
@@ -427,7 +423,11 @@ fn parse_brainstorm_output(output: &str) -> BrainstormResult {
     if !json_str.is_empty() {
         if let Ok(val) = serde_json::from_str::<Value>(json_str) {
             // Check for exhausted
-            if val.get("exhausted").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if val
+                .get("exhausted")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 return BrainstormResult {
                     exhausted: true,
                     exhausted_reason: val
@@ -447,10 +447,8 @@ fn parse_brainstorm_output(output: &str) -> BrainstormResult {
                 .map(|arr| {
                     arr.iter()
                         .filter_map(|opt| {
-                            let direction = opt
-                                .get("direction")
-                                .and_then(|v| v.as_str())?
-                                .to_string();
+                            let direction =
+                                opt.get("direction").and_then(|v| v.as_str())?.to_string();
                             let novelty = opt
                                 .get("novelty_score")
                                 .and_then(|v| v.as_f64())
@@ -559,10 +557,7 @@ mod tests {
         assert_eq!(result.options[0].direction, "Use Rust");
         assert!((result.options[0].novelty_score - 0.85).abs() < 0.001);
         assert_eq!(result.selected.as_deref(), Some("Use Rust"));
-        assert_eq!(
-            result.rationale.as_deref(),
-            Some("Better performance")
-        );
+        assert_eq!(result.rationale.as_deref(), Some("Better performance"));
     }
 
     #[test]

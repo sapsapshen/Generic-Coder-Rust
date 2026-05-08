@@ -27,7 +27,7 @@ use crate::ui;
 /// Represents a single chat message
 #[derive(Clone)]
 pub struct ChatMessage {
-    pub role: String,      // "user" or "assistant"
+    pub role: String, // "user" or "assistant"
     pub content: String,
     pub streaming: bool,
     pub acp: Option<AcpState>,
@@ -376,7 +376,10 @@ impl App {
             model_label: String::from("Not configured"),
             llm_configs,
             llm_form: LlmForm::default(),
-            workspace_form: WorkspaceForm { name: ws_name, path: ws_path },
+            workspace_form: WorkspaceForm {
+                name: ws_name,
+                path: ws_path,
+            },
             remote_form: RemoteForm::default(),
             workspace_path: String::new(),
             workspace_name: String::new(),
@@ -514,7 +517,8 @@ impl App {
                 self.scroll_offset = self.scroll_offset.saturating_sub(1);
             }
             KeyCode::PageUp => {
-                self.scroll_offset = (self.scroll_offset + 10).min(self.messages.len().saturating_sub(1));
+                self.scroll_offset =
+                    (self.scroll_offset + 10).min(self.messages.len().saturating_sub(1));
             }
             KeyCode::PageDown => {
                 self.scroll_offset = self.scroll_offset.saturating_sub(10);
@@ -585,12 +589,7 @@ impl App {
                 }
                 KeyCode::Up => {
                     // Simple history: restore last user message
-                    if let Some(last) = self
-                        .messages
-                        .iter()
-                        .rev()
-                        .find(|m| m.role == "user")
-                    {
+                    if let Some(last) = self.messages.iter().rev().find(|m| m.role == "user") {
                         self.input = last.content.clone();
                         self.input_cursor = self.input.len();
                     }
@@ -615,8 +614,8 @@ impl App {
                 self.scroll_offset = self.scroll_offset.saturating_sub(3);
             }
             MouseEventKind::ScrollUp => {
-                self.scroll_offset = (self.scroll_offset + 3)
-                    .min(self.messages.len().saturating_sub(1));
+                self.scroll_offset =
+                    (self.scroll_offset + 3).min(self.messages.len().saturating_sub(1));
             }
             _ => {}
         }
@@ -717,9 +716,17 @@ impl App {
                 output = done.to_string();
                 // Capture token usage if present
                 if let Some(usage) = item.get("usage") {
-                    let pt = usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let ct = usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let ca = usage.get("prompt_cache_hit_tokens").and_then(|v| v.as_u64())
+                    let pt = usage
+                        .get("prompt_tokens")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let ct = usage
+                        .get("completion_tokens")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let ca = usage
+                        .get("prompt_cache_hit_tokens")
+                        .and_then(|v| v.as_u64())
                         .or_else(|| usage.get("cached_tokens").and_then(|v| v.as_u64()))
                         .unwrap_or(0);
                     self.last_usage = Some((pt, ct, ca));
@@ -828,12 +835,20 @@ impl App {
             "/profiles" => {
                 let profiles = provider_profiles::built_in_provider_profiles()
                     .into_iter()
-                    .map(|profile| format!("  {} -> {} ({})", profile.id, profile.model, profile.apibase))
+                    .map(|profile| {
+                        format!(
+                            "  {} -> {} ({})",
+                            profile.id, profile.model, profile.apibase
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n");
                 self.messages.push(ChatMessage {
                     role: "assistant".into(),
-                    content: format!("DeepSeek provider presets:\n{}\n\nUse /preset <id> to apply one.", profiles),
+                    content: format!(
+                        "DeepSeek provider presets:\n{}\n\nUse /preset <id> to apply one.",
+                        profiles
+                    ),
                     streaming: false,
                     acp: None,
                 });
@@ -932,7 +947,11 @@ impl App {
         }
         self.set_status(&format!(
             "Multi-Agent: {}",
-            if self.multi_agent_enabled { "ON" } else { "OFF" }
+            if self.multi_agent_enabled {
+                "ON"
+            } else {
+                "OFF"
+            }
         ));
     }
 
@@ -961,7 +980,11 @@ impl App {
         self.set_status(&format!(
             "YOLO mode: {}{}",
             if self.yolo_enabled { "ON" } else { "OFF" },
-            if self.yolo_enabled { " ⚡ AI will execute autonomously" } else { "" }
+            if self.yolo_enabled {
+                " ⚡ AI will execute autonomously"
+            } else {
+                ""
+            }
         ));
     }
 
@@ -984,7 +1007,11 @@ impl App {
             return;
         };
 
-        let key = format!("generic_coder_{}_{}_config", profile.session_type, profile.id.replace('-', "_"));
+        let key = format!(
+            "generic_coder_{}_{}_config",
+            profile.session_type,
+            profile.id.replace('-', "_")
+        );
         let api_key = self
             .llm_configs
             .get(
@@ -1054,7 +1081,10 @@ impl App {
             .models
             .iter()
             .position(|(entry_key, _)| entry_key == &key)
-            .unwrap_or(self.current_model_idx.min(self.models.len().saturating_sub(1)));
+            .unwrap_or(
+                self.current_model_idx
+                    .min(self.models.len().saturating_sub(1)),
+            );
         self.reasoning_effort = config.reasoning_effort.clone();
         self.update_model_label();
 
@@ -1095,10 +1125,13 @@ impl App {
             match session_store::get_checkpoint(session_index, checkpoint_index) {
                 Some(checkpoint) => {
                     self.session_usage = checkpoint.usage_totals.clone();
-                    self.last_usage = checkpoint
-                        .last_usage
-                        .as_ref()
-                        .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+                    self.last_usage = checkpoint.last_usage.as_ref().map(|usage| {
+                        (
+                            usage.prompt_tokens,
+                            usage.completion_tokens,
+                            usage.cached_tokens,
+                        )
+                    });
                     checkpoint.messages
                 }
                 None => {
@@ -1108,10 +1141,13 @@ impl App {
             }
         } else {
             self.session_usage = saved.usage_totals.clone();
-            self.last_usage = saved
-                .last_usage
-                .as_ref()
-                .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+            self.last_usage = saved.last_usage.as_ref().map(|usage| {
+                (
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    usage.cached_tokens,
+                )
+            });
             saved.messages.clone()
         };
         self.messages = source_messages
@@ -1152,10 +1188,13 @@ impl App {
             Ok(forked) => {
                 self.active_session_index = Some(forked.index);
                 self.session_usage = forked.usage_totals.clone();
-                self.last_usage = forked
-                    .last_usage
-                    .as_ref()
-                    .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+                self.last_usage = forked.last_usage.as_ref().map(|usage| {
+                    (
+                        usage.prompt_tokens,
+                        usage.completion_tokens,
+                        usage.cached_tokens,
+                    )
+                });
                 self.messages = forked
                     .messages
                     .into_iter()
@@ -1177,7 +1216,10 @@ impl App {
                 self.scroll_offset = 0;
                 self.dialog = Dialog::None;
                 self.refresh_sessions();
-                self.set_status(&format!("Forked session #{} into #{}", session_index, forked.index));
+                self.set_status(&format!(
+                    "Forked session #{} into #{}",
+                    session_index, forked.index
+                ));
             }
             Err(err) => self.set_status(&format!("Fork failed: {err:#}")),
         }
@@ -1213,9 +1255,10 @@ impl App {
 
     fn cycle_reasoning_effort(&mut self) {
         let efforts: &[Option<&str>] = &[None, Some("off"), Some("high"), Some("max")];
-        let current_idx = efforts.iter().position(|e| {
-            e.map(|s| s.to_string()) == self.reasoning_effort
-        }).unwrap_or(0);
+        let current_idx = efforts
+            .iter()
+            .position(|e| e.map(|s| s.to_string()) == self.reasoning_effort)
+            .unwrap_or(0);
         let next = efforts[(current_idx + 1) % efforts.len()];
         self.reasoning_effort = next.map(|s| s.to_string());
         if let Ok(a) = self.agent.try_read() {
@@ -1291,7 +1334,8 @@ impl App {
 
     pub fn refresh_changes(&mut self) {
         // Use git_status from tools.rs
-        let status = tools::git_status(None).unwrap_or_else(|_| serde_json::json!({"error": "git failed"}));
+        let status =
+            tools::git_status(None).unwrap_or_else(|_| serde_json::json!({"error": "git failed"}));
         self.changes = status
             .get("changes")
             .and_then(|v| v.as_array())
@@ -1305,7 +1349,11 @@ impl App {
                                 .file_name()
                                 .map(|n| n.to_string_lossy().to_string())
                                 .unwrap_or_else(|| path.to_string()),
-                            time: item.get("status").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            time: item
+                                .get("status")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                         })
                     })
                     .collect()
@@ -1325,13 +1373,16 @@ impl App {
                 checkpoint_count: session.checkpoints.len(),
             })
             .collect();
-        self.sessions_cursor = self.sessions_cursor.min(self.sessions.len().saturating_sub(1));
+        self.sessions_cursor = self
+            .sessions_cursor
+            .min(self.sessions.len().saturating_sub(1));
         let max_checkpoint_cursor = self
             .sessions
             .get(self.sessions_cursor)
             .map(|session| session.checkpoint_count)
             .unwrap_or(0);
-        self.sessions_checkpoint_cursor = self.sessions_checkpoint_cursor.min(max_checkpoint_cursor);
+        self.sessions_checkpoint_cursor =
+            self.sessions_checkpoint_cursor.min(max_checkpoint_cursor);
     }
 
     fn persist_current_session(&mut self, last_usage: Option<session_store::TokenUsage>) {
@@ -1350,13 +1401,18 @@ impl App {
             return;
         }
 
-        if let Ok(saved) = session_store::upsert_session(self.active_session_index, &messages, last_usage) {
+        if let Ok(saved) =
+            session_store::upsert_session(self.active_session_index, &messages, last_usage)
+        {
             self.active_session_index = Some(saved.index);
             self.session_usage = saved.usage_totals;
-            self.last_usage = saved
-                .last_usage
-                .as_ref()
-                .map(|usage| (usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens));
+            self.last_usage = saved.last_usage.as_ref().map(|usage| {
+                (
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    usage.cached_tokens,
+                )
+            });
         }
     }
 
@@ -1387,7 +1443,8 @@ impl App {
                 KeyCode::Enter => {
                     if self.settings_tab == SettingsTab::Model && !self.settings_models.is_empty() {
                         // Save model config
-                        let (key, llm_cfg) = &self.settings_models[self.settings_cursor.min(self.settings_models.len() - 1)];
+                        let (key, llm_cfg) = &self.settings_models
+                            [self.settings_cursor.min(self.settings_models.len() - 1)];
                         if let Err(e) = config::save_ui_llm_config_entry(key, llm_cfg) {
                             self.set_status(&format!("Save error: {e}"));
                         } else {
@@ -1397,8 +1454,11 @@ impl App {
                 }
                 _ => {}
             },
-            Event::Key(key) if key.kind == KeyEventKind::Press
-                && key.code == KeyCode::Char('q') && key.modifiers == KeyModifiers::CONTROL => {
+            Event::Key(key)
+                if key.kind == KeyEventKind::Press
+                    && key.code == KeyCode::Char('q')
+                    && key.modifiers == KeyModifiers::CONTROL =>
+            {
                 self.dialog = Dialog::None;
                 self.settings_editing_field = None;
             }
@@ -1417,11 +1477,13 @@ impl App {
                     self.sessions_checkpoint_cursor = 0;
                 }
                 KeyCode::Down => {
-                    self.sessions_cursor = (self.sessions_cursor + 1).min(self.sessions.len().saturating_sub(1));
+                    self.sessions_cursor =
+                        (self.sessions_cursor + 1).min(self.sessions.len().saturating_sub(1));
                     self.sessions_checkpoint_cursor = 0;
                 }
                 KeyCode::Left => {
-                    self.sessions_checkpoint_cursor = self.sessions_checkpoint_cursor.saturating_sub(1);
+                    self.sessions_checkpoint_cursor =
+                        self.sessions_checkpoint_cursor.saturating_sub(1);
                 }
                 KeyCode::Right => {
                     let max_checkpoint_cursor = self
@@ -1429,10 +1491,13 @@ impl App {
                         .get(self.sessions_cursor)
                         .map(|session| session_store::list_checkpoints(session.index).len())
                         .unwrap_or(0);
-                    self.sessions_checkpoint_cursor = (self.sessions_checkpoint_cursor + 1).min(max_checkpoint_cursor);
+                    self.sessions_checkpoint_cursor =
+                        (self.sessions_checkpoint_cursor + 1).min(max_checkpoint_cursor);
                 }
                 KeyCode::Enter => {
-                    if let Some((session_index, checkpoint_index)) = self.selected_sessions_dialog_target() {
+                    if let Some((session_index, checkpoint_index)) =
+                        self.selected_sessions_dialog_target()
+                    {
                         let target = checkpoint_index
                             .map(|checkpoint| format!("{session_index}@{checkpoint}"))
                             .unwrap_or_else(|| session_index.to_string());
@@ -1440,7 +1505,9 @@ impl App {
                     }
                 }
                 KeyCode::Char('f') => {
-                    if let Some((session_index, checkpoint_index)) = self.selected_sessions_dialog_target() {
+                    if let Some((session_index, checkpoint_index)) =
+                        self.selected_sessions_dialog_target()
+                    {
                         let target = checkpoint_index
                             .map(|checkpoint| format!("{session_index}@{checkpoint}"))
                             .unwrap_or_else(|| session_index.to_string());
@@ -1473,14 +1540,22 @@ impl App {
             return Some((session.index, None));
         }
         let checkpoints = session_store::list_checkpoints(session.index);
-        let checkpoint = checkpoints.into_iter().rev().nth(self.sessions_checkpoint_cursor - 1)?;
+        let checkpoint = checkpoints
+            .into_iter()
+            .rev()
+            .nth(self.sessions_checkpoint_cursor - 1)?;
         Some((session.index, Some(checkpoint.index)))
     }
 
     pub fn selected_sessions_dialog_checkpoints(&self) -> Vec<session_store::SessionCheckpoint> {
         self.sessions
             .get(self.sessions_cursor)
-            .map(|session| session_store::list_checkpoints(session.index).into_iter().rev().collect())
+            .map(|session| {
+                session_store::list_checkpoints(session.index)
+                    .into_iter()
+                    .rev()
+                    .collect()
+            })
             .unwrap_or_default()
     }
 }

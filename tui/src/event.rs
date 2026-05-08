@@ -1,6 +1,6 @@
 //! Event handling types and helpers.
 
-use crossterm::event::{Event, poll, read};
+use crossterm::event::{poll, read, Event};
 use std::time::Duration;
 
 /// Which panel currently has focus

@@ -156,9 +156,19 @@
   };
 
   // workbench/src/workbench/parts/composerPart.ts
-  var ComposerPart = class extends Disposable {
+  var ComposerPart = class _ComposerPart extends Disposable {
     mentionSuggestions = [];
     loopCheckTimer = null;
+    slashSelectedIndex = 0;
+    static SLASH_COMMANDS = [
+      { cmd: "/new", desc: "Start a fresh session (clears context)" },
+      { cmd: "/fork", desc: "Fork the current session into a new branch" },
+      { cmd: "/continue", desc: "/continue <n>  \u2014 restore and resume session #n" },
+      { cmd: "/plan", desc: "Switch to Plan mode (explore without modifying files)" },
+      { cmd: "/work", desc: "Switch to Work mode (implement and execute)" },
+      { cmd: "/review", desc: "Switch to Review mode (audit code for issues)" },
+      { cmd: "/clear", desc: "Clear error memory and avoidance hints" }
+    ];
     layoutService;
     workbenchService;
     commandService;
@@ -183,15 +193,51 @@
       const yoloToggle = this.layoutService.getElement("yolo-toggle");
       const autoModelToggle = this.layoutService.getElement("auto-model-toggle");
       const effortGroup = this.layoutService.getElement("effort-group");
+      const yoloWarningOff = this.layoutService.getElement("yolo-warning-off");
+      yoloWarningOff.addEventListener("click", () => {
+        void this.workbenchService.toggleYolo(false);
+      });
       input.addEventListener("input", async () => {
         this.workbenchService.setInputValue(input.value);
+        this.updateSlashHints(input);
         await this.refreshMentionSuggestions();
         this.scheduleLoopCheck(input.value);
       });
       input.addEventListener("keydown", async (event) => {
+        const slashHints = this.layoutService.getElement("slash-hints");
+        if (!slashHints.hidden) {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            this.slashSelectedIndex = Math.min(this.slashSelectedIndex + 1, this.visibleSlashCommands(input.value).length - 1);
+            this.renderSlashHints(input, slashHints);
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            this.slashSelectedIndex = Math.max(this.slashSelectedIndex - 1, 0);
+            this.renderSlashHints(input, slashHints);
+            return;
+          }
+          if (event.key === "Enter" || event.key === "Tab") {
+            const cmds = this.visibleSlashCommands(input.value);
+            if (cmds[this.slashSelectedIndex]) {
+              event.preventDefault();
+              input.value = cmds[this.slashSelectedIndex].cmd + " ";
+              this.workbenchService.setInputValue(input.value);
+              slashHints.hidden = true;
+              return;
+            }
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            slashHints.hidden = true;
+            return;
+          }
+        }
         const mod = event.metaKey || event.ctrlKey;
         if (mod && event.key.toLowerCase() === "enter") {
           event.preventDefault();
+          slashHints.hidden = true;
           await this.workbenchService.sendPrompt(input.value);
           return;
         }
@@ -296,6 +342,8 @@
       computerUseToggle.title = state.computerUseAvailable ? "Allow AI to control mouse, keyboard and screen" : "Computer Use is not available on this platform";
       yoloToggle.checked = state.yoloEnabled;
       yoloToggle.title = state.yoloEnabled ? "YOLO: AI executes all actions autonomously without confirmation" : "Enable YOLO mode for fully autonomous execution";
+      const yoloWarning = this.layoutService.getElement("yolo-warning");
+      yoloWarning.hidden = !state.yoloEnabled;
       autoModelToggle.checked = state.autoModelEnabled;
       autoModelToggle.title = state.autoModelEnabled ? "DeepSeek-style automatic model + reasoning routing is active" : "Automatically route each turn to the best model";
       effortGroup.querySelectorAll(".effort-btn").forEach((btn) => {
@@ -326,6 +374,47 @@
       }
       const query = before.slice(atIndex + 1).trim();
       this.mentionSuggestions = await this.workbenchService.fetchMentionSuggestions(query);
+    }
+    visibleSlashCommands(text) {
+      const lower = text.toLowerCase();
+      return _ComposerPart.SLASH_COMMANDS.filter((c) => c.cmd.startsWith(lower) || lower === "/");
+    }
+    updateSlashHints(input) {
+      const slashHints = this.layoutService.getElement("slash-hints");
+      const text = input.value;
+      if (!text.startsWith("/") || text.includes(" ") || text.includes("\n")) {
+        slashHints.hidden = true;
+        return;
+      }
+      this.slashSelectedIndex = 0;
+      this.renderSlashHints(input, slashHints);
+    }
+    renderSlashHints(input, container) {
+      const cmds = this.visibleSlashCommands(input.value);
+      if (cmds.length === 0) {
+        container.hidden = true;
+        return;
+      }
+      container.hidden = false;
+      container.innerHTML = cmds.map(
+        (c, i) => `
+          <button class="slash-hints__item${i === this.slashSelectedIndex ? " is-selected" : ""}" data-slash-cmd="${c.cmd}">
+            <span class="slash-hints__cmd">${c.cmd}</span>
+            <span class="slash-hints__desc">${c.desc}</span>
+          </button>`
+      ).join("");
+      container.querySelectorAll("[data-slash-cmd]").forEach((btn, i) => {
+        btn.addEventListener("mouseenter", () => {
+          this.slashSelectedIndex = i;
+          this.renderSlashHints(input, container);
+        });
+        btn.addEventListener("click", () => {
+          input.value = btn.dataset.slashCmd + " ";
+          this.workbenchService.setInputValue(input.value);
+          container.hidden = true;
+          input.focus();
+        });
+      });
     }
   };
 
@@ -1292,8 +1381,14 @@
         <label class="field"><span>Provider</span><input id="provider-input" class="text-input" value="${escapeHtml(state.llmForm.provider || "")}" /></label>
         <label class="field"><span>Display name</span><input id="display-name-input" class="text-input" value="${escapeHtml(state.llmForm.name || "")}" /></label>
         <label class="field"><span>Model name</span><input id="model-name-input" class="text-input" value="${escapeHtml(state.llmForm.model || "")}" /></label>
-        <label class="field"><span>Base URL</span><input id="base-url-input" class="text-input" value="${escapeHtml(state.llmForm.apibase || "")}" /></label>
-        <label class="field"><span>API Key</span><input id="api-key-input" class="text-input" type="password" value="${escapeHtml(state.llmForm.apikey || "")}" /></label>
+        <label class="field"><span>Base URL</span><input id="base-url-input" class="text-input" value="${escapeHtml(state.llmForm.apibase || "")}" title="The API endpoint URL, e.g. https://api.openai.com/v1" /></label>
+        <div class="field api-key-group">
+          <span>API Key</span>
+          <div class="input-group">
+            <input id="api-key-input" class="text-input" type="password" value="${escapeHtml(state.llmForm.apikey || "")}" autocomplete="off" />
+            <button type="button" id="api-key-toggle" class="api-key-toggle text-button" title="Show/hide API key">\u{1F441}</button>
+          </div>
+        </div>
         <button id="save-model-button" class="primary-button">Save model settings</button>
       </section>
       <section class="sidebar-section">
@@ -1337,6 +1432,19 @@
           apibase: container.querySelector("#base-url-input").value.trim(),
           apikey: container.querySelector("#api-key-input").value.trim()
         });
+      });
+      container.querySelector("#api-key-toggle")?.addEventListener("click", () => {
+        const apiKeyInput = container.querySelector("#api-key-input");
+        const toggleBtn = container.querySelector("#api-key-toggle");
+        if (apiKeyInput.type === "password") {
+          apiKeyInput.type = "text";
+          toggleBtn.textContent = "\u{1F648}";
+          toggleBtn.title = "Hide API key";
+        } else {
+          apiKeyInput.type = "password";
+          toggleBtn.textContent = "\u{1F441}";
+          toggleBtn.title = "Show API key";
+        }
       });
       container.querySelector("#save-workspace-button")?.addEventListener("click", () => {
         void this.workbenchService.saveWorkspaceSettings({
@@ -1519,8 +1627,16 @@
                 </div>
                 <span class="composer__meta" id="composer-meta"></span>
               </div>
+              <div id="yolo-warning" class="yolo-warning" hidden>
+                <i class="codicon codicon-warning"></i>
+                <span class="yolo-warning__text">YOLO mode is active \u2014 AI will execute all actions without asking for confirmation</span>
+                <button id="yolo-warning-off" class="yolo-warning__off">Turn off</button>
+              </div>
               <div class="composer__body">
-                <textarea id="prompt-input" spellcheck="false" placeholder="Describe the task, or type /new to start a clean session."></textarea>
+                <div class="composer__input-wrap">
+                  <div id="slash-hints" class="slash-hints" hidden></div>
+                  <textarea id="prompt-input" spellcheck="false" placeholder="Describe the task\u2026 Type / for commands, @ to mention a file."></textarea>
+                </div>
                 <button id="send-button" class="primary-button">Send</button>
               </div>
             </section>

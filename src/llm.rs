@@ -162,10 +162,9 @@ fn is_legacy_tool_tag(tag: &str) -> bool {
 }
 
 fn strip_legacy_protocol_tags(text: &str) -> String {
-    let legacy_tag_re = Regex::new(
-        r"(?s)<([a-z][a-z0-9_]*_[a-z0-9_]*)>([\s\S]*?)</([a-z][a-z0-9_]*_[a-z0-9_]*)>",
-    )
-    .unwrap();
+    let legacy_tag_re =
+        Regex::new(r"(?s)<([a-z][a-z0-9_]*_[a-z0-9_]*)>([\s\S]*?)</([a-z][a-z0-9_]*_[a-z0-9_]*)>")
+            .unwrap();
 
     legacy_tag_re
         .replace_all(text, |caps: &regex::Captures| {
@@ -184,7 +183,8 @@ fn strip_legacy_protocol_tags(text: &str) -> String {
 }
 
 fn strip_dsml_protocol_tags(text: &str) -> String {
-    let dsml_re = Regex::new(r"(?s)<｜｜DSML｜｜tool_calls>[\s\S]*?</｜｜DSML｜｜tool_calls>").unwrap();
+    let dsml_re =
+        Regex::new(r"(?s)<｜｜DSML｜｜tool_calls>[\s\S]*?</｜｜DSML｜｜tool_calls>").unwrap();
     dsml_re.replace_all(text, "").to_string()
 }
 
@@ -499,7 +499,9 @@ fn compress_history_tags(messages: &mut [Value], keep_recent: usize, max_len: us
                 for (open_re, close_re, tag) in &tag_patterns {
                     let normalized_open = format!("<{tag}>");
                     let normalized_close = format!("</{tag}>");
-                    text = open_re.replace_all(&text, normalized_open.as_str()).to_string();
+                    text = open_re
+                        .replace_all(&text, normalized_open.as_str())
+                        .to_string();
                     text = close_re
                         .replace_all(&text, normalized_close.as_str())
                         .to_string();
@@ -2696,10 +2698,9 @@ impl ToolClient {
         let mut errors: Vec<String> = Vec::new();
 
         // (?s) enables dot-all mode so `.` matches newlines — required for multi-line <tool_use> blocks
-        let tool_re = Regex::new(
-            r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</_?(?:tool_use|tool_call)>",
-        )
-        .unwrap();
+        let tool_re =
+            Regex::new(r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</_?(?:tool_use|tool_call)>")
+                .unwrap();
         let tool_all: Vec<String> = tool_re
             .captures_iter(&remaining)
             .map(|c| c[1].to_string().trim().to_string())
@@ -3086,10 +3087,9 @@ pub fn parse_text_tool_calls(content: &str) -> (Vec<ToolCall>, String) {
     }
 
     // Try XML tags — (?s) enables dot-all so multi-line blocks are matched
-    let tool_re = Regex::new(
-        r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</_?(?:tool_use|tool_call)>",
-    )
-    .unwrap();
+    let tool_re =
+        Regex::new(r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</_?(?:tool_use|tool_call)>")
+            .unwrap();
     for caps in tool_re.captures_iter(&remaining) {
         let s = caps.get(1).unwrap().as_str().trim();
         if let Ok(d) = tryparse_json(s) {
@@ -3190,7 +3190,8 @@ mod tests {
 
     #[test]
     fn test_sanitize_protocol_text_removes_unclosed_tool_block() {
-        let raw = "Working\n<tool_use>{\"name\":\"file_read\",\"arguments\":{\"path\":\"README.md\"}}";
+        let raw =
+            "Working\n<tool_use>{\"name\":\"file_read\",\"arguments\":{\"path\":\"README.md\"}}";
         assert_eq!(sanitize_protocol_text(raw), "Working");
     }
 
@@ -3359,14 +3360,21 @@ mod tests {
     fn test_trim_messages_history_keeps_relevant_older_turns() {
         let mut history = Vec::new();
         for idx in 0..5 {
-            history.push(json!({"role": "user", "content": format!("legacy deploy docs topic {}", idx)}));
-            history.push(json!({"role": "assistant", "content": format!("deploy response {}", idx)}));
+            history.push(
+                json!({"role": "user", "content": format!("legacy deploy docs topic {}", idx)}),
+            );
+            history
+                .push(json!({"role": "assistant", "content": format!("deploy response {}", idx)}));
         }
-        history.push(json!({"role": "user", "content": "parser panic on markdown table rendering"}));
-        history.push(json!({"role": "assistant", "content": "parser investigation and stack trace"}));
+        history
+            .push(json!({"role": "user", "content": "parser panic on markdown table rendering"}));
+        history
+            .push(json!({"role": "assistant", "content": "parser investigation and stack trace"}));
         for idx in 0..4 {
             history.push(json!({"role": "user", "content": format!("parser fix for markdown renderer {}", idx)}));
-            history.push(json!({"role": "assistant", "content": format!("parser code patch {}", idx)}));
+            history.push(
+                json!({"role": "assistant", "content": format!("parser code patch {}", idx)}),
+            );
         }
 
         trim_messages_history(&mut history, 128_000);

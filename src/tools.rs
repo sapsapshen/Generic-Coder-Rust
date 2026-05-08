@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -21,6 +21,7 @@ lazy_static::lazy_static! {
     static ref RG_JSON_LINE_RE: Regex = Regex::new(
         r#"\{"type":"match","data":\{"path":\{"text":"(?P<file>[^"]+)"\},"lines":\{"text":"(?P<line>[^"]*)"\},"line_number":(?P<ln>\d+)\}\}"#
     ).unwrap();
+    static ref FAILED_TEST_RE: Regex = Regex::new(r"---- ([^\s]+) stdout ----").unwrap();
 }
 
 const MAX_LINE_LEN: usize = 8000;
@@ -265,9 +266,7 @@ fn normalize_application_name(name: &str) -> String {
         "finder" => "Finder".to_string(),
         "terminal" => "Terminal".to_string(),
         "iterm" | "iterm2" => "iTerm".to_string(),
-        "vscode" | "vs code" | "visual studio code" | "code" => {
-            "Visual Studio Code".to_string()
-        }
+        "vscode" | "vs code" | "visual studio code" | "code" => "Visual Studio Code".to_string(),
         _ => trimmed.to_string(),
     }
 }
@@ -1200,7 +1199,8 @@ fn do_format(data: &Value, max_len: usize, omit: &str, depth: usize) -> String {
 // ---------------------------------------------------------------------------
 
 pub fn consume_file(dir: &str, filename: &str) -> Option<String> {
-    let path = resolve_local_path(&Path::new(dir).join(filename).display().to_string(), false).ok()?;
+    let path =
+        resolve_local_path(&Path::new(dir).join(filename).display().to_string(), false).ok()?;
     let content = fs::read_to_string(&path).ok()?;
     let _ = fs::remove_file(&path);
     Some(content)
@@ -1270,7 +1270,9 @@ pub fn web_search(query: &str, max_results: Option<usize>) -> Result<JsonResult>
             .context("DuckDuckGo returned an error status")?;
 
         let final_url = response.url().to_string();
-        let body = response.text().context("Failed to read search response body")?;
+        let body = response
+            .text()
+            .context("Failed to read search response body")?;
         let results = parse_duckduckgo_results(&body, limit);
 
         Ok(json!({
@@ -1307,7 +1309,9 @@ pub fn web_fetch(url: &str, max_chars: Option<usize>) -> Result<JsonResult> {
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .map(str::to_string);
-        let body = response.text().with_context(|| format!("Failed to read {url}"))?;
+        let body = response
+            .text()
+            .with_context(|| format!("Failed to read {url}"))?;
         let (title, extracted_text) = extract_web_title_and_text(&body, content_type.as_deref());
         let (content, truncated) = truncate_chars(&extracted_text, limit);
 
@@ -1361,14 +1365,11 @@ pub fn web_execute_js(
 // computer use
 // ---------------------------------------------------------------------------
 
-pub fn computer_screenshot(
-    region: Option<&[u64]>,
-    display: Option<u64>,
-) -> Result<JsonResult> {
+pub fn computer_screenshot(region: Option<&[u64]>, display: Option<u64>) -> Result<JsonResult> {
     let mut cmd = if cfg!(target_os = "macos") {
         let mut c = Command::new("screencapture");
-        c.arg("-C");      // Include cursor in screenshot
-        c.arg("-x");      // No sound
+        c.arg("-C"); // Include cursor in screenshot
+        c.arg("-x"); // No sound
         if let Some(d) = display {
             c.arg("-D").arg(d.to_string());
         }
@@ -1379,13 +1380,33 @@ pub fn computer_screenshot(
             }
         }
         // Capture to temp file as PNG
-        let tmp = std::env::temp_dir().join(format!("gc-screenshot-{}.png", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0")));
+        let tmp = std::env::temp_dir().join(format!(
+            "gc-screenshot-{}.png",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0")
+        ));
         c.arg(tmp.to_string_lossy().to_string());
         (c, tmp)
     } else if cfg!(target_os = "linux") {
         // On Linux, use scrot or import (ImageMagick)
-        let tmp = std::env::temp_dir().join(format!("gc-screenshot-{}.png", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0")));
-        let c = if Command::new("scrot").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok() {
+        let tmp = std::env::temp_dir().join(format!(
+            "gc-screenshot-{}.png",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0")
+        ));
+        let c = if Command::new("scrot")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
             let mut c = Command::new("scrot");
             c.arg("-z"); // silent
             c.arg(tmp.to_string_lossy().to_string());
@@ -1400,7 +1421,14 @@ pub fn computer_screenshot(
         (c, tmp)
     } else {
         // Windows
-        let tmp = std::env::temp_dir().join(format!("gc-screenshot-{}.png", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0")));
+        let tmp = std::env::temp_dir().join(format!(
+            "gc-screenshot-{}.png",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0")
+        ));
         let tmp_str = tmp.to_string_lossy().to_string();
         // PowerShell screenshot
         let ps_script = format!(
@@ -1412,7 +1440,10 @@ pub fn computer_screenshot(
         (c, tmp)
     };
 
-    let output = cmd.0.output().map_err(|e| anyhow!("Failed to take screenshot: {}", e))?;
+    let output = cmd
+        .0
+        .output()
+        .map_err(|e| anyhow!("Failed to take screenshot: {}", e))?;
     if !output.status.success() && !cfg!(target_os = "macos") {
         // macOS screencapture may still succeed even if it returns non-zero in some cases
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1426,8 +1457,7 @@ pub fn computer_screenshot(
     }
 
     // Read the image
-    let img_data = fs::read(tmp_path)
-        .map_err(|e| anyhow!("Failed to read screenshot: {}", e))?;
+    let img_data = fs::read(tmp_path).map_err(|e| anyhow!("Failed to read screenshot: {}", e))?;
 
     // Get image dimensions
     let dims = image::load_from_memory(&img_data)
@@ -1702,16 +1732,27 @@ fn computer_action_macos(
 ) -> Result<JsonResult> {
     match action {
         "left_click" | "right_click" | "double_click" | "middle_click" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required for click"))?, y.ok_or_else(|| anyhow!("x,y required for click"))?);
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required for click"))?,
+                y.ok_or_else(|| anyhow!("x,y required for click"))?,
+            );
             // Use cliclick if available (most precise), otherwise osascript
-            if Command::new("cliclick").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok() {
+            if Command::new("cliclick")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok()
+            {
                 let cmd = match action {
                     "right_click" => format!("rc:{},{}", x, y),
                     "double_click" => format!("dc:{},{}", x, y),
                     "middle_click" => format!("mc:{},{}", x, y),
                     _ => format!("c:{},{}", x, y),
                 };
-                Command::new("cliclick").arg(cmd).output()
+                Command::new("cliclick")
+                    .arg(cmd)
+                    .output()
                     .map_err(|e| anyhow!("cliclick failed: {}", e))?;
             } else {
                 // Fallback to osascript and MouseTools
@@ -1729,21 +1770,38 @@ fn computer_action_macos(
                         x, y
                     ),
                 };
-                Command::new("osascript").arg("-e").arg(&script).output()
+                Command::new("osascript")
+                    .arg("-e")
+                    .arg(&script)
+                    .output()
                     .map_err(|e| anyhow!("osascript click failed: {}", e))?;
             }
         }
         "mouse_move" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required for mouse_move"))?, y.ok_or_else(|| anyhow!("x,y required for mouse_move"))?);
-            if Command::new("cliclick").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok() {
-                Command::new("cliclick").arg(format!("m:{},{}", x, y)).output()
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required for mouse_move"))?,
+                y.ok_or_else(|| anyhow!("x,y required for mouse_move"))?,
+            );
+            if Command::new("cliclick")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok()
+            {
+                Command::new("cliclick")
+                    .arg(format!("m:{},{}", x, y))
+                    .output()
                     .map_err(|e| anyhow!("cliclick move failed: {}", e))?;
             } else {
                 let script = format!(
                     r#"tell application "System Events" to set position of mouse to {{{}, {}}}"#,
                     x, y
                 );
-                Command::new("osascript").arg("-e").arg(&script).output()
+                Command::new("osascript")
+                    .arg("-e")
+                    .arg(&script)
+                    .output()
                     .map_err(|e| anyhow!("osascript mouse_move failed: {}", e))?;
             }
         }
@@ -1769,20 +1827,24 @@ fn computer_action_macos(
                         "end" => "end",
                         "pageup" => "page up",
                         "pagedown" => "page down",
-                        "f1" | "f2" | "f3" | "f4" | "f5" | "f6" | "f7" | "f8" | "f9" | "f10" | "f11" | "f12" => parts[0],
+                        "f1" | "f2" | "f3" | "f4" | "f5" | "f6" | "f7" | "f8" | "f9" | "f10"
+                        | "f11" | "f12" => parts[0],
                         k => k,
                     };
                     let script = format!(
                         r#"tell application "System Events" to keystroke "{}""#,
                         key_name
                     );
-                    Command::new("osascript").arg("-e").arg(&script).output()
+                    Command::new("osascript")
+                        .arg("-e")
+                        .arg(&script)
+                        .output()
                         .map_err(|e| anyhow!("osascript keystroke failed: {}", e))?;
                 } else {
                     // Modifier + key
                     let key = parts.last().unwrap_or(&"");
                     let mut modifiers = Vec::new();
-                    for p in &parts[..parts.len()-1] {
+                    for p in &parts[..parts.len() - 1] {
                         match p.to_lowercase().as_str() {
                             "cmd" | "command" => modifiers.push("command down"),
                             "shift" => modifiers.push("shift down"),
@@ -1806,18 +1868,35 @@ fn computer_action_macos(
                         k => k,
                     };
                     let script = if modifiers_str.is_empty() {
-                        format!(r#"tell application "System Events" to keystroke "{}""#, key_name)
+                        format!(
+                            r#"tell application "System Events" to keystroke "{}""#,
+                            key_name
+                        )
                     } else {
-                        format!(r#"tell application "System Events" to keystroke "{}" using {{{}}}"#, key_name, modifiers_str)
+                        format!(
+                            r#"tell application "System Events" to keystroke "{}" using {{{}}}"#,
+                            key_name, modifiers_str
+                        )
                     };
-                    Command::new("osascript").arg("-e").arg(&script).output()
+                    Command::new("osascript")
+                        .arg("-e")
+                        .arg(&script)
+                        .output()
                         .map_err(|e| anyhow!("osascript keystroke with modifiers failed: {}", e))?;
                 }
             } else {
                 // Type text - use osascript keystroke (may be slow for long text)
                 // For long text, use cliclick if available
-                if Command::new("cliclick").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok() {
-                    Command::new("cliclick").arg(format!("t:{}", t)).output()
+                if Command::new("cliclick")
+                    .arg("--version")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .is_ok()
+                {
+                    Command::new("cliclick")
+                        .arg(format!("t:{}", t))
+                        .output()
                         .map_err(|e| anyhow!("cliclick type failed: {}", e))?;
                 } else {
                     // osascript typing - escape special chars
@@ -1826,13 +1905,19 @@ fn computer_action_macos(
                         r#"tell application "System Events" to keystroke "{}""#,
                         escaped
                     );
-                    Command::new("osascript").arg("-e").arg(&script).output()
+                    Command::new("osascript")
+                        .arg("-e")
+                        .arg(&script)
+                        .output()
                         .map_err(|e| anyhow!("osascript type failed: {}", e))?;
                 }
             }
         }
         "scroll" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required for scroll"))?, y.ok_or_else(|| anyhow!("x,y required for scroll"))?);
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required for scroll"))?,
+                y.ok_or_else(|| anyhow!("x,y required for scroll"))?,
+            );
             let amt = amount.unwrap_or(3) as i64;
             let dir = direction.unwrap_or("down");
             let (mult_x, mult_y) = match dir {
@@ -1853,7 +1938,10 @@ fn computer_action_macos(
 end tell"#,
                 total_clicks, x, y, mult_x, mult_y
             );
-            Command::new("osascript").arg("-e").arg(&script).output()
+            Command::new("osascript")
+                .arg("-e")
+                .arg(&script)
+                .output()
                 .map_err(|e| anyhow!("osascript scroll failed: {}", e))?;
         }
         "wait" => {
@@ -1861,9 +1949,20 @@ end tell"#,
             std::thread::sleep(Duration::from_secs_f64(dur.max(0.0)));
         }
         "left_mouse_down" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
-            if Command::new("cliclick").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok() {
-                Command::new("cliclick").arg(format!("dd:{},{}", x, y)).output()
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
+            if Command::new("cliclick")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok()
+            {
+                Command::new("cliclick")
+                    .arg(format!("dd:{},{}", x, y))
+                    .output()
                     .map_err(|e| anyhow!("cliclick mouse down failed: {}", e))?;
             } else {
                 let script = format!(
@@ -1876,28 +1975,56 @@ end tell"#,
 end tell"#,
                     x, y
                 );
-                Command::new("osascript").arg("-e").arg(&script).output()
+                Command::new("osascript")
+                    .arg("-e")
+                    .arg(&script)
+                    .output()
                     .map_err(|e| anyhow!("osascript mouse_down failed: {}", e))?;
             }
         }
         "left_mouse_up" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
-            if Command::new("cliclick").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok() {
-                Command::new("cliclick").arg(format!("du:{},{}", x, y)).output()
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
+            if Command::new("cliclick")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok()
+            {
+                Command::new("cliclick")
+                    .arg(format!("du:{},{}", x, y))
+                    .output()
                     .map_err(|e| anyhow!("cliclick mouse up failed: {}", e))?;
             } else {
                 let script = format!(
                     r#"tell application "System Events" to mouse up at {{{}, {}}}"#,
                     x, y
                 );
-                Command::new("osascript").arg("-e").arg(&script).output()
+                Command::new("osascript")
+                    .arg("-e")
+                    .arg(&script)
+                    .output()
                     .map_err(|e| anyhow!("osascript mouse_up failed: {}", e))?;
             }
         }
         "triple_click" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
-            if Command::new("cliclick").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok() {
-                Command::new("cliclick").arg(format!("tc:{},{}", x, y)).output()
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
+            if Command::new("cliclick")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok()
+            {
+                Command::new("cliclick")
+                    .arg(format!("tc:{},{}", x, y))
+                    .output()
                     .map_err(|e| anyhow!("cliclick triple click failed: {}", e))?;
             } else {
                 let script = format!(
@@ -1910,12 +2037,16 @@ end tell"#,
 end tell"#,
                     x, y, x, y, x, y
                 );
-                Command::new("osascript").arg("-e").arg(&script).output()
+                Command::new("osascript")
+                    .arg("-e")
+                    .arg(&script)
+                    .output()
                     .map_err(|e| anyhow!("osascript triple click failed: {}", e))?;
             }
         }
         "open_app" | "open_application" => {
-            let app_name = text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
+            let app_name =
+                text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
             let escaped = app_name.replace('\\', "\\\\").replace('"', "\\\"");
             // Use `open -a` — this activates the app and brings it to the foreground
             let output = Command::new("open")
@@ -1924,7 +2055,11 @@ end tell"#,
                 .map_err(|e| anyhow!("open -a '{}' failed: {}", escaped, e))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(anyhow!("Failed to open application '{}': {}", app_name, stderr.trim()));
+                return Err(anyhow!(
+                    "Failed to open application '{}': {}",
+                    app_name,
+                    stderr.trim()
+                ));
             }
         }
         _ => return Err(anyhow!("Unknown action: {}", action)),
@@ -1935,9 +2070,13 @@ end tell"#,
 
 #[cfg(not(target_os = "macos"))]
 fn computer_action_macos(
-    _action: &str, _x: Option<u64>, _y: Option<u64>,
-    _text: Option<&str>, _direction: Option<&str>,
-    _amount: Option<u64>, _duration: Option<f64>,
+    _action: &str,
+    _x: Option<u64>,
+    _y: Option<u64>,
+    _text: Option<&str>,
+    _direction: Option<&str>,
+    _amount: Option<u64>,
+    _duration: Option<f64>,
 ) -> Result<JsonResult> {
     unreachable!()
 }
@@ -1955,44 +2094,70 @@ fn computer_action_linux(
     // On Linux, use xdotool
     match action {
         "left_click" | "right_click" | "double_click" | "middle_click" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
             let btn = match action {
                 "right_click" => "3",
                 "middle_click" => "2",
                 _ => "1",
             };
             if action == "double_click" {
-                Command::new("xdotool").args(["mousemove", &x.to_string(), &y.to_string()]).output()?;
-                Command::new("xdotool").args(["click", "--repeat", "2", "1"]).output()
+                Command::new("xdotool")
+                    .args(["mousemove", &x.to_string(), &y.to_string()])
+                    .output()?;
+                Command::new("xdotool")
+                    .args(["click", "--repeat", "2", "1"])
+                    .output()
                     .map_err(|e| anyhow!("xdotool double click failed: {}", e))?;
             } else {
-                Command::new("xdotool").args(["mousemove", &x.to_string(), &y.to_string(), "click", btn]).output()
+                Command::new("xdotool")
+                    .args(["mousemove", &x.to_string(), &y.to_string(), "click", btn])
+                    .output()
                     .map_err(|e| anyhow!("xdotool click failed: {}", e))?;
             }
         }
         "mouse_move" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
-            Command::new("xdotool").args(["mousemove", &x.to_string(), &y.to_string()]).output()
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
+            Command::new("xdotool")
+                .args(["mousemove", &x.to_string(), &y.to_string()])
+                .output()
                 .map_err(|e| anyhow!("xdotool mousemove failed: {}", e))?;
         }
         "type" | "key" => {
             let t = text.unwrap_or("");
             if action == "key" {
-                Command::new("xdotool").arg("key").arg(t).output()
+                Command::new("xdotool")
+                    .arg("key")
+                    .arg(t)
+                    .output()
                     .map_err(|e| anyhow!("xdotool key failed: {}", e))?;
             } else {
-                Command::new("xdotool").arg("type").arg(t).output()
+                Command::new("xdotool")
+                    .arg("type")
+                    .arg(t)
+                    .output()
                     .map_err(|e| anyhow!("xdotool type failed: {}", e))?;
             }
         }
         "scroll" => {
             let amt = amount.unwrap_or(3) as i64;
             let dir = match direction.unwrap_or("down") {
-                "up" => 4, "down" => 5, "left" => 6, "right" => 7,
+                "up" => 4,
+                "down" => 5,
+                "left" => 6,
+                "right" => 7,
                 _ => 5,
             };
             for _ in 0..amt {
-                Command::new("xdotool").arg("click").arg(dir.to_string()).output()?;
+                Command::new("xdotool")
+                    .arg("click")
+                    .arg(dir.to_string())
+                    .output()?;
             }
         }
         "wait" => {
@@ -2000,21 +2165,35 @@ fn computer_action_linux(
             std::thread::sleep(Duration::from_secs_f64(dur.max(0.0)));
         }
         "left_mouse_down" => {
-            Command::new("xdotool").arg("mousedown").arg("1").output()
+            Command::new("xdotool")
+                .arg("mousedown")
+                .arg("1")
+                .output()
                 .map_err(|e| anyhow!("xdotool mousedown failed: {}", e))?;
         }
         "left_mouse_up" => {
-            Command::new("xdotool").arg("mouseup").arg("1").output()
+            Command::new("xdotool")
+                .arg("mouseup")
+                .arg("1")
+                .output()
                 .map_err(|e| anyhow!("xdotool mouseup failed: {}", e))?;
         }
         "triple_click" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
-            Command::new("xdotool").args(["mousemove", &x.to_string(), &y.to_string()]).output()?;
-            Command::new("xdotool").args(["click", "--repeat", "3", "1"]).output()
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
+            Command::new("xdotool")
+                .args(["mousemove", &x.to_string(), &y.to_string()])
+                .output()?;
+            Command::new("xdotool")
+                .args(["click", "--repeat", "3", "1"])
+                .output()
                 .map_err(|e| anyhow!("xdotool triple click failed: {}", e))?;
         }
         "open_app" | "open_application" => {
-            let app_name = text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
+            let app_name =
+                text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
             // Try xdg-open first, then the command directly
             let output = Command::new("sh")
                 .args(["-c", &format!("nohup {} &", app_name)])
@@ -2022,7 +2201,11 @@ fn computer_action_linux(
                 .map_err(|e| anyhow!("Failed to launch '{}': {}", app_name, e))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(anyhow!("Failed to open application '{}': {}", app_name, stderr.trim()));
+                return Err(anyhow!(
+                    "Failed to open application '{}': {}",
+                    app_name,
+                    stderr.trim()
+                ));
             }
         }
         _ => return Err(anyhow!("Unknown action: {}", action)),
@@ -2032,9 +2215,13 @@ fn computer_action_linux(
 
 #[cfg(not(target_os = "linux"))]
 fn computer_action_linux(
-    _action: &str, _x: Option<u64>, _y: Option<u64>,
-    _text: Option<&str>, _direction: Option<&str>,
-    _amount: Option<u64>, _duration: Option<f64>,
+    _action: &str,
+    _x: Option<u64>,
+    _y: Option<u64>,
+    _text: Option<&str>,
+    _direction: Option<&str>,
+    _amount: Option<u64>,
+    _duration: Option<f64>,
 ) -> Result<JsonResult> {
     unreachable!()
 }
@@ -2052,10 +2239,15 @@ fn computer_action_windows(
     // On Windows, use PowerShell with .NET SendKeys or mouse_event
     let ps_script = match action {
         "left_click" | "right_click" | "double_click" | "middle_click" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
             let _click_count = if action == "double_click" { 2 } else { 1 };
             let _btn = match action {
-                "right_click" => "Right", "middle_click" => "Middle", _ => "Left",
+                "right_click" => "Right",
+                "middle_click" => "Middle",
+                _ => "Left",
             };
             format!(
                 r#"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point({},{}); $c = [System.Windows.Forms.Cursor]::Position; [System.Windows.Forms.SendKeys]::SendWait('{{}}')"#,
@@ -2063,7 +2255,10 @@ fn computer_action_windows(
             )
         }
         "mouse_move" => {
-            let (x, y) = (x.ok_or_else(|| anyhow!("x,y required"))?, y.ok_or_else(|| anyhow!("x,y required"))?);
+            let (x, y) = (
+                x.ok_or_else(|| anyhow!("x,y required"))?,
+                y.ok_or_else(|| anyhow!("x,y required"))?,
+            );
             format!(
                 r#"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point({},{})"#,
                 x, y
@@ -2072,44 +2267,390 @@ fn computer_action_windows(
         "type" | "key" => {
             let t = text.unwrap_or("");
             // Escape for SendKeys
-            let escaped = t.replace('+', "{+}").replace('^', "{^}").replace('%', "{%}").replace('~', "{~}")
-                .replace('(', "{(}").replace(')', "{)}").replace('{', "{{}").replace('}', "{}}");
+            let escaped = t
+                .replace('+', "{+}")
+                .replace('^', "{^}")
+                .replace('%', "{%}")
+                .replace('~', "{~}")
+                .replace('(', "{(}")
+                .replace(')', "{)}")
+                .replace('{', "{{}")
+                .replace('}', "{}}");
             if action == "key" {
-                format!(r#"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{}')"#, escaped)
+                format!(
+                    r#"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{}')"#,
+                    escaped
+                )
             } else {
-                format!(r#"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{}')"#, escaped)
+                format!(
+                    r#"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{}')"#,
+                    escaped
+                )
             }
         }
         "scroll" => {
             let amt = amount.unwrap_or(3) as i64;
             let _dir_sign = match direction.unwrap_or("down") {
-                "up" => 120, "down" => -120, "left" => -120, "right" => 120,
+                "up" => 120,
+                "down" => -120,
+                "left" => -120,
+                "right" => 120,
                 _ => -120,
             };
-            format!(r#"[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); for($i=0;$i -lt {};$i++){{ [System.Windows.Forms.SendKeys]::SendWait('') }}"#, amt)
+            format!(
+                r#"[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); for($i=0;$i -lt {};$i++){{ [System.Windows.Forms.SendKeys]::SendWait('') }}"#,
+                amt
+            )
         }
         "wait" => {
             let dur = duration.unwrap_or(1.0);
             format!("Start-Sleep -Seconds {}", dur)
         }
         "open_app" | "open_application" => {
-            let app_name = text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
+            let app_name =
+                text.ok_or_else(|| anyhow!("text (application name) required for open_app"))?;
             format!("Start-Process '{}'", app_name.replace('\'', "''"))
         }
         _ => return Err(anyhow!("Unsupported action on Windows: {}", action)),
     };
-    Command::new("powershell").arg("-NoProfile").arg("-Command").arg(&ps_script).output()
+    Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(&ps_script)
+        .output()
         .map_err(|e| anyhow!("PowerShell action failed: {}", e))?;
     Ok(json!({"status": "ok", "action": action}))
 }
 
 #[cfg(not(target_os = "windows"))]
 fn computer_action_windows(
-    _action: &str, _x: Option<u64>, _y: Option<u64>,
-    _text: Option<&str>, _direction: Option<&str>,
-    _amount: Option<u64>, _duration: Option<f64>,
+    _action: &str,
+    _x: Option<u64>,
+    _y: Option<u64>,
+    _text: Option<&str>,
+    _direction: Option<&str>,
+    _amount: Option<u64>,
+    _duration: Option<f64>,
 ) -> Result<JsonResult> {
     unreachable!()
+}
+
+// ---------------------------------------------------------------------------
+// MCP / semantic / test loop / LSP-lite
+// ---------------------------------------------------------------------------
+
+fn run_shell_command(
+    command: &str,
+    cwd: &Path,
+    timeout_secs: u64,
+) -> Result<(String, i32, String)> {
+    let timeout = Duration::from_secs(timeout_secs.max(1));
+    let mut child = if cfg!(target_os = "windows") {
+        Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(command)
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .with_context(|| format!("Failed to run PowerShell command: {command}"))?
+    } else {
+        Command::new("sh")
+            .arg("-lc")
+            .arg(command)
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .with_context(|| format!("Failed to run shell command: {command}"))?
+    };
+
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > timeout {
+            kill_process_tree(&mut child);
+            let output = child.wait_with_output()?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let combined = if stdout.is_empty() {
+                stderr.clone()
+            } else if stderr.is_empty() {
+                stdout.clone()
+            } else {
+                format!("{stdout}\n{stderr}")
+            };
+            return Ok((combined, -1, "timeout".to_string()));
+        }
+
+        if child.try_wait()?.is_some() {
+            let output = child.wait_with_output()?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let combined = if stdout.is_empty() {
+                stderr.clone()
+            } else if stderr.is_empty() {
+                stdout.clone()
+            } else {
+                format!("{stdout}\n{stderr}")
+            };
+            return Ok((
+                combined,
+                output.status.code().unwrap_or(-1),
+                "completed".to_string(),
+            ));
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn kill_process_tree(child: &mut Child) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = child.kill();
+    }
+}
+
+fn detect_test_command(root: &Path) -> Option<String> {
+    if root.join("Cargo.toml").exists() {
+        return Some("cargo test --quiet".to_string());
+    }
+    if root.join("package.json").exists() {
+        return Some("npm test -- --runInBand".to_string());
+    }
+    if root.join("pytest.ini").exists()
+        || root.join("pyproject.toml").exists()
+        || root.join("requirements.txt").exists()
+    {
+        return Some("pytest -q".to_string());
+    }
+    None
+}
+
+fn truncate_for_tool_output(text: &str, max_chars: usize) -> (String, bool) {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return (text.to_string(), false);
+    }
+    (text.chars().take(max_chars).collect(), true)
+}
+
+fn parse_failed_test_names(output: &str) -> Vec<String> {
+    FAILED_TEST_RE
+        .captures_iter(output)
+        .filter_map(|caps| caps.get(1).map(|value| value.as_str().to_string()))
+        .collect()
+}
+
+fn extract_first_error_line(output: &str) -> Option<String> {
+    output
+        .lines()
+        .find(|line| {
+            let trimmed = line.trim();
+            trimmed.starts_with("error")
+                || trimmed.contains("panicked at")
+                || trimmed.contains("FAILED")
+        })
+        .map(|line| line.trim().to_string())
+}
+
+fn parse_test_feedback(command: &str, output: &str, exit_code: i32, status: &str) -> Value {
+    let failed_tests = parse_failed_test_names(output);
+    let first_error = extract_first_error_line(output);
+    let kind = if command.contains("cargo test") {
+        "cargo_test"
+    } else if command.contains("pytest") {
+        "pytest"
+    } else if command.contains("npm test") {
+        "npm_test"
+    } else {
+        "generic"
+    };
+
+    let summary = if status == "timeout" {
+        format!("Test command timed out: {command}")
+    } else if exit_code == 0 {
+        format!("Test command passed: {command}")
+    } else if !failed_tests.is_empty() {
+        format!("{} test(s) failed for `{command}`", failed_tests.len())
+    } else if let Some(error) = first_error.as_deref() {
+        format!("Test command failed: {error}")
+    } else {
+        format!("Test command failed with exit code {exit_code}")
+    };
+
+    json!({
+        "kind": kind,
+        "summary": summary,
+        "failed_tests": failed_tests,
+        "first_error": first_error,
+        "exit_code": exit_code,
+        "status": status,
+    })
+}
+
+fn parse_cargo_check_diagnostics(output: &str, max_results: usize) -> Vec<Value> {
+    let mut diagnostics = Vec::new();
+    for line in output.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if value.get("reason").and_then(|item| item.as_str()) != Some("compiler-message") {
+            continue;
+        }
+        let Some(message) = value.get("message") else {
+            continue;
+        };
+        let level = message
+            .get("level")
+            .and_then(|item| item.as_str())
+            .unwrap_or("unknown");
+        let spans = message
+            .get("spans")
+            .and_then(|item| item.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let primary_span = spans
+            .iter()
+            .find(|span| span.get("is_primary").and_then(|item| item.as_bool()) == Some(true))
+            .cloned()
+            .or_else(|| spans.first().cloned())
+            .unwrap_or(Value::Null);
+        diagnostics.push(json!({
+            "level": level,
+            "message": message.get("message").cloned().unwrap_or(Value::Null),
+            "rendered": message.get("rendered").cloned().unwrap_or(Value::Null),
+            "file": primary_span.get("file_name").cloned().unwrap_or(Value::Null),
+            "line": primary_span.get("line_start").cloned().unwrap_or(Value::Null),
+            "column": primary_span.get("column_start").cloned().unwrap_or(Value::Null),
+        }));
+        if diagnostics.len() >= max_results {
+            break;
+        }
+    }
+    diagnostics
+}
+
+pub fn mcp_list_servers() -> Result<JsonResult> {
+    crate::mcp::list_servers()
+}
+
+pub fn mcp_list_tools(server: Option<&str>) -> Result<JsonResult> {
+    crate::mcp::list_tools(server)
+}
+
+pub fn mcp_call_tool(server: &str, tool: &str, arguments: Value) -> Result<JsonResult> {
+    crate::mcp::call_tool(server, tool, arguments)
+}
+
+pub fn semantic_search(
+    query: &str,
+    path: Option<&str>,
+    max_results: Option<usize>,
+) -> Result<JsonResult> {
+    crate::semantic::semantic_search(query, path, max_results)
+}
+
+pub fn lsp_find_definition(
+    symbol: &str,
+    path: Option<&str>,
+    max_results: Option<usize>,
+) -> Result<JsonResult> {
+    crate::semantic::find_definition(symbol, path, max_results)
+}
+
+pub fn lsp_find_references(
+    symbol: &str,
+    path: Option<&str>,
+    max_results: Option<usize>,
+) -> Result<JsonResult> {
+    crate::semantic::find_references(symbol, path, max_results)
+}
+
+pub fn lsp_rename_preview(
+    symbol: &str,
+    new_name: &str,
+    path: Option<&str>,
+    max_results: Option<usize>,
+) -> Result<JsonResult> {
+    crate::semantic::rename_preview(symbol, new_name, path, max_results)
+}
+
+pub fn lsp_get_diagnostics(path: Option<&str>, max_results: Option<usize>) -> Result<JsonResult> {
+    let root = resolve_search_root(path.unwrap_or("."))?;
+    if !root.join("Cargo.toml").exists() {
+        return Err(anyhow!(
+            "lsp_get_diagnostics currently supports Rust workspaces with Cargo.toml"
+        ));
+    }
+
+    let output = Command::new("cargo")
+        .args(["check", "--message-format=json"])
+        .current_dir(&root)
+        .output()
+        .context("Failed to run cargo check")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let diagnostics =
+        parse_cargo_check_diagnostics(&stdout, max_results.unwrap_or(50).clamp(1, 200));
+    let combined = if stdout.is_empty() {
+        stderr.clone()
+    } else if stderr.is_empty() {
+        stdout.clone()
+    } else {
+        format!("{stdout}\n{stderr}")
+    };
+
+    Ok(json!({
+        "status": if output.status.success() { "ok" } else { "error" },
+        "count": diagnostics.len(),
+        "diagnostics": diagnostics,
+        "exit_code": output.status.code().unwrap_or(-1),
+        "raw": combined,
+    }))
+}
+
+pub fn run_tests(
+    command: Option<&str>,
+    path: Option<&str>,
+    max_output_chars: Option<usize>,
+) -> Result<JsonResult> {
+    let root = resolve_search_root(path.unwrap_or("."))?;
+    let selected = command
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| detect_test_command(&root))
+        .ok_or_else(|| anyhow!("Could not infer a test command for this workspace"))?;
+
+    let (output, exit_code, status) = run_shell_command(&selected, &root, 180)?;
+    let max_chars = max_output_chars.unwrap_or(20_000).clamp(500, 100_000);
+    let (truncated_output, truncated) = truncate_for_tool_output(&output, max_chars);
+    let feedback = parse_test_feedback(&selected, &output, exit_code, &status);
+    let passed = status == "completed" && exit_code == 0;
+
+    Ok(json!({
+        "status": if passed { "passed" } else if status == "timeout" { "timeout" } else { "failed" },
+        "command": selected,
+        "cwd": root.display().to_string(),
+        "exit_code": exit_code,
+        "output": truncated_output,
+        "truncated": truncated,
+        "feedback": feedback,
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -2308,9 +2849,15 @@ mod tests {
         let _guard = test_env_guard();
         let external = std::env::temp_dir().join("generic_coder_tools_outside_read.txt");
         let _ = fs::write(&external, "outside");
-        let err = file_read(&external.display().to_string(), None, None, None, Some(false))
-            .unwrap_err()
-            .to_string();
+        let err = file_read(
+            &external.display().to_string(),
+            None,
+            None,
+            None,
+            Some(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("outside the active workspace"));
         let _ = fs::remove_file(external);
     }
@@ -2319,9 +2866,13 @@ mod tests {
     fn test_file_write_blocks_outside_root() {
         let _guard = test_env_guard();
         let external = std::env::temp_dir().join("generic_coder_tools_outside_write.txt");
-        let err = file_write(&external.display().to_string(), "outside", Some("overwrite"))
-            .unwrap_err()
-            .to_string();
+        let err = file_write(
+            &external.display().to_string(),
+            "outside",
+            Some("overwrite"),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("outside the active workspace"));
     }
 
@@ -2365,10 +2916,8 @@ mod tests {
         fs::write(&file_path, "ok").unwrap();
 
         let workspace_name = format!("test-ws-{}", timestamp());
-        let opened = crate::workspace::open_folder(
-            &workspace_root.display().to_string(),
-            &workspace_name,
-        );
+        let opened =
+            crate::workspace::open_folder(&workspace_root.display().to_string(), &workspace_name);
         assert_eq!(opened["status"], "success");
 
         std::env::set_current_dir(&outside_cwd).unwrap();
@@ -2405,20 +2954,20 @@ mod tests {
         let _ = fs::remove_dir_all(&workspace_root);
     }
 
-        #[test]
-        fn test_extract_web_title_and_text_from_html() {
-                let _guard = test_env_guard();
-                let body = "<html><head><title>Example Title</title></head><body><h1>Hello</h1><p>World</p></body></html>";
-                let (title, text) = extract_web_title_and_text(body, Some("text/html"));
-                assert_eq!(title.as_deref(), Some("Example Title"));
-                assert!(text.contains("Hello"));
-                assert!(text.contains("World"));
-        }
+    #[test]
+    fn test_extract_web_title_and_text_from_html() {
+        let _guard = test_env_guard();
+        let body = "<html><head><title>Example Title</title></head><body><h1>Hello</h1><p>World</p></body></html>";
+        let (title, text) = extract_web_title_and_text(body, Some("text/html"));
+        assert_eq!(title.as_deref(), Some("Example Title"));
+        assert!(text.contains("Hello"));
+        assert!(text.contains("World"));
+    }
 
-        #[test]
-        fn test_parse_duckduckgo_results_extracts_items() {
-                let _guard = test_env_guard();
-                let body = r#"
+    #[test]
+    fn test_parse_duckduckgo_results_extracts_items() {
+        let _guard = test_env_guard();
+        let body = r#"
                 <div class="result">
                     <a class="result__a" href="https://example.com/a">Alpha Result</a>
                     <a class="result__snippet">Alpha snippet</a>
@@ -2429,17 +2978,20 @@ mod tests {
                 </div>
                 "#;
 
-                let results = parse_duckduckgo_results(body, 10);
-                assert_eq!(results.len(), 2);
-                assert_eq!(results[0]["title"], "Alpha Result");
-                assert_eq!(results[1]["url"], "https://example.com/b");
-        }
+        let results = parse_duckduckgo_results(body, 10);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["title"], "Alpha Result");
+        assert_eq!(results[1]["url"], "https://example.com/b");
+    }
 
     #[test]
     fn test_normalize_application_name_maps_common_aliases() {
         let _guard = test_env_guard();
         assert_eq!(normalize_application_name("chrome"), "Google Chrome");
-        assert_eq!(normalize_application_name("Google Chrome.app"), "Google Chrome");
+        assert_eq!(
+            normalize_application_name("Google Chrome.app"),
+            "Google Chrome"
+        );
         assert_eq!(normalize_application_name("vscode"), "Visual Studio Code");
     }
 
@@ -2496,8 +3048,36 @@ mod tests {
 
         let stdout = result["stdout"].as_str().unwrap_or("");
         assert!(stdout.contains(&fs::canonicalize(&nested).unwrap().display().to_string()));
-        assert_eq!(fs::read_to_string(nested.join("created.txt")).unwrap(), "ok");
+        assert_eq!(
+            fs::read_to_string(nested.join("created.txt")).unwrap(),
+            "ok"
+        );
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_parse_test_feedback_extracts_failed_tests() {
+        let _guard = test_env_guard();
+        let feedback = parse_test_feedback(
+            "cargo test --quiet",
+            "---- auth::tests::fails stdout ----\nthread 'auth::tests::fails' panicked at src/lib.rs:1\n",
+            101,
+            "completed",
+        );
+        assert_eq!(feedback["kind"], "cargo_test");
+        assert_eq!(feedback["failed_tests"][0], "auth::tests::fails");
+        assert!(feedback["summary"].as_str().unwrap().contains("failed"));
+    }
+
+    #[test]
+    fn test_parse_cargo_check_diagnostics_reads_json_lines() {
+        let _guard = test_env_guard();
+        let output = r#"{"reason":"compiler-message","message":{"message":"cannot find value `x` in this scope","level":"error","rendered":"error[E0425]: cannot find value `x` in this scope","spans":[{"file_name":"src/main.rs","line_start":12,"column_start":5,"is_primary":true}]}}"#;
+        let diagnostics = parse_cargo_check_diagnostics(output, 10);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0]["level"], "error");
+        assert_eq!(diagnostics[0]["file"], "src/main.rs");
+        assert_eq!(diagnostics[0]["line"], 12);
     }
 }

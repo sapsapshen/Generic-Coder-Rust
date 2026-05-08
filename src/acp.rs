@@ -11,8 +11,8 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::agent::{agent_runner_loop, AgentHandler, LlmClient};
-use crate::types::ToolSchema;
 use crate::error_memory::ErrorSeverity;
+use crate::types::ToolSchema;
 
 // ── Role system prompts ──────────────────────────────────────────────────────
 
@@ -147,11 +147,11 @@ impl AgentRole {
 
     pub fn emoji(&self) -> &'static str {
         match self {
-            Self::Orchestrator => "\u{1F3AF}",  // 🎯
-            Self::Searcher => "\u{1F50D}",       // 🔍
-            Self::Planner => "\u{1F4CB}",        // 📋
-            Self::Coder => "\u{1F4BB}",          // 💻
-            Self::Reviewer => "\u{1F512}",        // 🔒
+            Self::Orchestrator => "\u{1F3AF}", // 🎯
+            Self::Searcher => "\u{1F50D}",     // 🔍
+            Self::Planner => "\u{1F4CB}",      // 📋
+            Self::Coder => "\u{1F4BB}",        // 💻
+            Self::Reviewer => "\u{1F512}",     // 🔒
         }
     }
 }
@@ -508,7 +508,9 @@ async fn send_acp_event(display_tx: &mpsc::Sender<Value>, event: &AcpEvent) {
         .await;
 }
 
-fn parse_acp_plan(result: &Result<HashMap<String, Value>, anyhow::Error>) -> Result<AcpPlan, String> {
+fn parse_acp_plan(
+    result: &Result<HashMap<String, Value>, anyhow::Error>,
+) -> Result<AcpPlan, String> {
     let payload = result.as_ref().map_err(|e| format!("{:#}", e))?;
 
     let output = payload
@@ -542,8 +544,12 @@ fn parse_acp_plan(result: &Result<HashMap<String, Value>, anyhow::Error>) -> Res
 
     let json_str = json_str.trim();
 
-    let mut plan: AcpPlan = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse plan JSON: {e}\nRaw: {}", &json_str[..json_str.len().min(500)]))?;
+    let mut plan: AcpPlan = serde_json::from_str(json_str).map_err(|e| {
+        format!(
+            "Failed to parse plan JSON: {e}\nRaw: {}",
+            &json_str[..json_str.len().min(500)]
+        )
+    })?;
 
     // Validate and fill in defaults
     if plan.steps.is_empty() {

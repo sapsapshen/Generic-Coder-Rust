@@ -50,8 +50,16 @@ export class LayoutService {
                 </div>
                 <span class="composer__meta" id="composer-meta"></span>
               </div>
+              <div id="yolo-warning" class="yolo-warning" hidden>
+                <i class="codicon codicon-warning"></i>
+                <span class="yolo-warning__text">YOLO mode is active — AI will execute all actions without asking for confirmation</span>
+                <button id="yolo-warning-off" class="yolo-warning__off">Turn off</button>
+              </div>
               <div class="composer__body">
-                <textarea id="prompt-input" spellcheck="false" placeholder="Describe the task, or type /new to start a clean session."></textarea>
+                <div class="composer__input-wrap">
+                  <div id="slash-hints" class="slash-hints" hidden></div>
+                  <textarea id="prompt-input" spellcheck="false" placeholder="Describe the task… Type / for commands, @ to mention a file."></textarea>
+                </div>
                 <button id="send-button" class="primary-button">Send</button>
               </div>
             </section>

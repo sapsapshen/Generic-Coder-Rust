@@ -34,7 +34,11 @@ use generic_coder::skills::SkillsManager;
 use crate::app::App;
 
 #[derive(Parser)]
-#[command(name = "generic-coder-tui", version, about = "Generic Coder Terminal UI")]
+#[command(
+    name = "generic-coder-tui",
+    version,
+    about = "Generic Coder Terminal UI"
+)]
 struct Cli {
     /// Project directory (auto-detected if omitted)
     #[arg(long)]
@@ -63,9 +67,7 @@ fn project_dir() -> PathBuf {
     let exe = std::env::current_exe().ok();
     if let Some(ref path) = exe {
         for ancestor in path.ancestors().skip(2) {
-            if ancestor.join("Cargo.toml").is_file()
-                && !ancestor.ends_with("tui")
-            {
+            if ancestor.join("Cargo.toml").is_file() && !ancestor.ends_with("tui") {
                 return ancestor.to_path_buf();
             }
         }
@@ -73,7 +75,10 @@ fn project_dir() -> PathBuf {
     if let Ok(cwd) = std::env::current_dir() {
         // If we're inside tui/, go up one level
         if cwd.join("Cargo.toml").is_file() == false
-            && cwd.parent().map(|p| p.join("Cargo.toml").is_file()).unwrap_or(false)
+            && cwd
+                .parent()
+                .map(|p| p.join("Cargo.toml").is_file())
+                .unwrap_or(false)
         {
             return cwd.parent().unwrap().to_path_buf();
         }
@@ -98,6 +103,7 @@ async fn main() -> Result<()> {
     let skills_summary = skills_mgr.active_skills_summary();
     let error_memory = ErrorMemory::new(&root);
     let error_summary = error_memory.avoidance_summary();
+    let dream_context = generic_coder::dream::recent_context(&root, 5);
     let mut combined = String::new();
     if !skills_summary.is_empty() {
         combined.push_str(&skills_summary);
@@ -105,6 +111,10 @@ async fn main() -> Result<()> {
     if !error_summary.is_empty() {
         combined.push('\n');
         combined.push_str(&error_summary);
+    }
+    if !dream_context.is_empty() {
+        combined.push('\n');
+        combined.push_str(&dream_context);
     }
     let system_prompt = config::get_system_prompt_with_skills(&root, Some(&combined));
     let tools_schema = config::load_tool_schema(&root, None);
@@ -123,7 +133,11 @@ async fn main() -> Result<()> {
     }
 
     let agent = Arc::new(RwLock::new(agent));
-    let (task_tx, mut task_rx) = tokio::sync::mpsc::channel::<(String, String, tokio::sync::mpsc::Sender<serde_json::Value>)>(256);
+    let (task_tx, mut task_rx) = tokio::sync::mpsc::channel::<(
+        String,
+        String,
+        tokio::sync::mpsc::Sender<serde_json::Value>,
+    )>(256);
 
     // Background: process task queue
     let bg_agent = agent.clone();
@@ -131,21 +145,32 @@ async fn main() -> Result<()> {
     let bg_tools = tools_schema.clone();
     tokio::spawn(async move {
         while let Some((query, source, reply)) = task_rx.recv().await {
-            bg_agent.write().await.run_task(query, source, reply, bg_sys.clone(), bg_tools.clone()).await;
+            bg_agent
+                .write()
+                .await
+                .run_task(query, source, reply, bg_sys.clone(), bg_tools.clone())
+                .await;
         }
     });
 
     // ── Setup terminal ───────────────────────────────────────
     enable_raw_mode().context("enable raw mode")?;
     let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
-        .context("enter alternate screen")?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture).context("enter alternate screen")?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).context("create terminal")?;
 
     // ── Create app state and run ────────────────────────────
-    let mut app = App::new(agent, task_tx, root, system_prompt, tools_schema, error_memory).await;
+    let mut app = App::new(
+        agent,
+        task_tx,
+        root,
+        system_prompt,
+        tools_schema,
+        error_memory,
+    )
+    .await;
     let result = app.run(&mut terminal).await;
 
     // ── Cleanup terminal ─────────────────────────────────────

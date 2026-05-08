@@ -1,9 +1,6 @@
 //! UI rendering for Generic Coder TUI using Ratatui.
 
-use ratatui::{
-    prelude::*,
-    widgets::*,
-};
+use ratatui::{prelude::*, widgets::*};
 
 use crate::app::{App, ChatMessage, Dialog, SettingsTab};
 use crate::sidebar;
@@ -24,19 +21,14 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let err = Color::Rgb(248, 81, 73);
 
     // ── Full-screen background ────────────────────────
-    frame.render_widget(
-        Block::new().style(Style::default().bg(bg)),
-        area,
-    );
+    frame.render_widget(Block::new().style(Style::default().bg(bg)), area);
 
     // ── Layout: sidebar | main ────────────────────────
     let has_sidebar = app.sidebar_width > 0;
     let layout = if has_sidebar {
-        let chunks = Layout::horizontal([
-            Constraint::Length(app.sidebar_width),
-            Constraint::Min(0),
-        ])
-        .split(area);
+        let chunks =
+            Layout::horizontal([Constraint::Length(app.sidebar_width), Constraint::Min(0)])
+                .split(area);
         (Some(chunks[0]), chunks[1])
     } else {
         (None, area)
@@ -44,7 +36,18 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     // ── Sidebar ────────────────────────────────────────
     if let Some(sidebar_area) = layout.0 {
-        sidebar::draw(frame, sidebar_area, app, bg, panel_bg, border_color, accent, text, text_dim, ok);
+        sidebar::draw(
+            frame,
+            sidebar_area,
+            app,
+            bg,
+            panel_bg,
+            border_color,
+            accent,
+            text,
+            text_dim,
+            ok,
+        );
     }
 
     // ── Main area: chat + input + status bar ──────────
@@ -65,7 +68,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .style(Style::default().bg(panel_bg));
     let chat_inner = chat_block.inner(main_chunks[0]);
     frame.render_widget(chat_block, main_chunks[0]);
-    render_messages(frame, chat_inner, app, bg, panel_bg, accent, text, text_dim, ok, err);
+    render_messages(
+        frame, chat_inner, app, bg, panel_bg, accent, text, text_dim, ok, err,
+    );
 
     // ── Input line ─────────────────────────────────────
     let is_insert = matches!(app.input_mode, crate::event::InputMode::Insert);
@@ -75,7 +80,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
         bg
     };
     let input_block = Block::default()
-        .title(if is_insert { " Input (Esc to cancel) " } else { " Press Enter to type " })
+        .title(if is_insert {
+            " Input (Esc to cancel) "
+        } else {
+            " Press Enter to type "
+        })
         .title_alignment(Alignment::Left)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(if is_insert { accent } else { border_color }))
@@ -100,7 +109,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     if is_insert && !display_text.is_empty() && app.input_cursor < display_text.len() {
         let before = &display_text[..app.input_cursor.min(display_text.len())];
-        let cursor_char = &display_text[app.input_cursor.min(display_text.len())..(app.input_cursor + 1).min(display_text.len())];
+        let cursor_char = &display_text[app.input_cursor.min(display_text.len())
+            ..(app.input_cursor + 1).min(display_text.len())];
         let after = if app.input_cursor + 1 < display_text.len() {
             &display_text[app.input_cursor + 1..]
         } else {
@@ -109,33 +119,67 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
         let before_span = Span::styled(before, input_style);
         let cursor_span = Span::styled(
-            if cursor_char.is_empty() { " " } else { cursor_char },
+            if cursor_char.is_empty() {
+                " "
+            } else {
+                cursor_char
+            },
             Style::default().fg(bg).bg(accent),
         );
         let after_span = Span::styled(after, input_style);
 
         frame.render_widget(
-            Paragraph::new(Line::from(vec![before_span, cursor_span, after_span]))
-                .scroll((0, 0)),
+            Paragraph::new(Line::from(vec![before_span, cursor_span, after_span])).scroll((0, 0)),
             input_inner,
         );
     } else {
-        frame.render_widget(
-            Paragraph::new(display_text).style(input_style),
-            input_inner,
-        );
+        frame.render_widget(Paragraph::new(display_text).style(input_style), input_inner);
     }
 
     // ── Status bar ─────────────────────────────────────
-    status::draw(frame, main_chunks[2], app, bg, border_color, accent, text, text_dim, ok, err);
+    status::draw(
+        frame,
+        main_chunks[2],
+        app,
+        bg,
+        border_color,
+        accent,
+        text,
+        text_dim,
+        ok,
+        err,
+    );
 
     // ── Dialogs ────────────────────────────────────────
     match &app.dialog {
         Dialog::Settings(tab) => {
-            render_settings_dialog(frame, area, app, *tab, bg, panel_bg, border_color, accent, text, text_dim, ok);
+            render_settings_dialog(
+                frame,
+                area,
+                app,
+                *tab,
+                bg,
+                panel_bg,
+                border_color,
+                accent,
+                text,
+                text_dim,
+                ok,
+            );
         }
         Dialog::Sessions => {
-            render_sessions_dialog(frame, area, app, bg, panel_bg, border_color, accent, text, text_dim, ok);
+            render_sessions_dialog(
+                frame,
+                area,
+                app,
+                bg,
+                panel_bg,
+                border_color,
+                accent,
+                text,
+                text_dim,
+                ok,
+            );
         }
         Dialog::Help => {
             render_help_dialog(frame, area, bg, panel_bg, border_color, accent, text, ok);
@@ -249,11 +293,21 @@ fn render_messages(
     let mut lines: Vec<Line> = Vec::new();
     for msg in visible.iter().rev() {
         let role_color = if msg.role == "user" { accent } else { ok };
-        let role_prefix = if msg.role == "user" { "▶ You" } else { "● Agent" };
+        let role_prefix = if msg.role == "user" {
+            "▶ You"
+        } else {
+            "● Agent"
+        };
         lines.push(Line::from(vec![
-            Span::styled(role_prefix, Style::default().fg(role_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                role_prefix,
+                Style::default().fg(role_color).add_modifier(Modifier::BOLD),
+            ),
             if msg.streaming {
-                Span::styled(" (streaming...)", Style::default().fg(text_dim).add_modifier(Modifier::ITALIC))
+                Span::styled(
+                    " (streaming...)",
+                    Style::default().fg(text_dim).add_modifier(Modifier::ITALIC),
+                )
             } else {
                 Span::raw("")
             },
@@ -269,10 +323,16 @@ fn render_messages(
                     )));
                     for step in steps {
                         let role = step.get("role").and_then(|v| v.as_str()).unwrap_or("?");
-                        let desc = step.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                        let desc = step
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
                         lines.push(Line::from(vec![
                             Span::styled("│ ", Style::default().fg(text_dim)),
-                            Span::styled(format!("[{}] ", role.to_uppercase()), Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+                            Span::styled(
+                                format!("[{}] ", role.to_uppercase()),
+                                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                            ),
                             Span::styled(desc.to_string(), Style::default().fg(text)),
                         ]));
                     }
@@ -311,13 +371,22 @@ fn render_messages(
                 remaining = &remaining[think_start + "<thinking>".len()..];
                 if let Some(think_end) = remaining.find("</thinking>") {
                     // Render thinking block header
-                    lines.push(Line::from(vec![
-                        Span::styled("💭 Reasoning: ", Style::default().fg(Color::Rgb(180, 150, 60)).add_modifier(Modifier::ITALIC)),
-                    ]));
+                    lines.push(Line::from(vec![Span::styled(
+                        "💭 Reasoning: ",
+                        Style::default()
+                            .fg(Color::Rgb(180, 150, 60))
+                            .add_modifier(Modifier::ITALIC),
+                    )]));
                     let think_content = &remaining[..think_end];
                     for line in think_content.lines() {
-                        push_wrapped_line(&mut lines, line, max_w.saturating_sub(2), 
-                            Style::default().fg(Color::Rgb(120, 120, 100)).add_modifier(Modifier::ITALIC));
+                        push_wrapped_line(
+                            &mut lines,
+                            line,
+                            max_w.saturating_sub(2),
+                            Style::default()
+                                .fg(Color::Rgb(120, 120, 100))
+                                .add_modifier(Modifier::ITALIC),
+                        );
                     }
                     lines.push(Line::from(Span::styled(
                         "   ─ end reasoning ─",
@@ -327,8 +396,14 @@ fn render_messages(
                 } else {
                     // Unclosed thinking block (streaming) — render as dim
                     for line in remaining.lines() {
-                        push_wrapped_line(&mut lines, line, max_w.saturating_sub(2),
-                            Style::default().fg(Color::Rgb(120, 120, 100)).add_modifier(Modifier::ITALIC));
+                        push_wrapped_line(
+                            &mut lines,
+                            line,
+                            max_w.saturating_sub(2),
+                            Style::default()
+                                .fg(Color::Rgb(120, 120, 100))
+                                .add_modifier(Modifier::ITALIC),
+                        );
                     }
                     remaining = "";
                 }
@@ -375,11 +450,7 @@ fn render_settings_dialog(
     frame.render_widget(block.clone(), popup_area);
 
     let inner = block.inner(popup_area);
-    let chunks = Layout::vertical([
-        Constraint::Length(2),
-        Constraint::Min(0),
-    ])
-    .split(inner);
+    let chunks = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).split(inner);
 
     // Tab bar
     let tabs = ["Model", "Workspace", "Interface", "Skills"];
@@ -398,13 +469,13 @@ fn render_settings_dialog(
             if i == current_idx {
                 Span::styled(
                     format!(" [{}] ", name),
-                    Style::default().fg(bg).bg(accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(bg)
+                        .bg(accent)
+                        .add_modifier(Modifier::BOLD),
                 )
             } else {
-                Span::styled(
-                    format!("  {}  ", name),
-                    Style::default().fg(text_dim),
-                )
+                Span::styled(format!("  {}  ", name), Style::default().fg(text_dim))
             }
         })
         .collect();
@@ -416,9 +487,13 @@ fn render_settings_dialog(
     // Tab content
     match tab {
         SettingsTab::Model => render_model_settings(frame, chunks[1], app, text, text_dim, accent),
-        SettingsTab::Workspace => render_workspace_settings(frame, chunks[1], app, text, text_dim, accent),
+        SettingsTab::Workspace => {
+            render_workspace_settings(frame, chunks[1], app, text, text_dim, accent)
+        }
         SettingsTab::Interface => render_interface_settings(frame, chunks[1], app, text, text_dim),
-        SettingsTab::Skills => render_skills_settings(frame, chunks[1], app, text, text_dim, accent),
+        SettingsTab::Skills => {
+            render_skills_settings(frame, chunks[1], app, text, text_dim, accent)
+        }
         _ => {}
     }
 }
@@ -432,15 +507,24 @@ fn render_model_settings(
     _accent: Color,
 ) {
     let lines = vec![
-        Line::from(Span::styled("Model Settings", Style::default().fg(text).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "Model Settings",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
         Line::from(Span::styled(
             format!("Configured models: {}", app.models.len()),
             Style::default().fg(text),
         )),
         Line::from(""),
-        Line::from(Span::styled("Use the web UI or edit ~/.genericagent/ui_llm_config.json", Style::default().fg(text_dim))),
-        Line::from(Span::styled("to add/remove model configurations.", Style::default().fg(text_dim))),
+        Line::from(Span::styled(
+            "Use the web UI or edit ~/.genericagent/ui_llm_config.json",
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            "to add/remove model configurations.",
+            Style::default().fg(text_dim),
+        )),
         Line::from(""),
         Line::from(Span::styled("Current model:", Style::default().fg(text))),
         Line::from(Span::styled(
@@ -448,7 +532,10 @@ fn render_model_settings(
             Style::default().fg(text).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(Span::styled("Press Ctrl+Left/Right to switch models", Style::default().fg(text_dim))),
+        Line::from(Span::styled(
+            "Press Ctrl+Left/Right to switch models",
+            Style::default().fg(text_dim),
+        )),
     ];
     frame.render_widget(Paragraph::new(lines), area);
 }
@@ -467,16 +554,25 @@ fn render_workspace_settings(
         app.workspace_path.clone()
     };
     let lines = vec![
-        Line::from(Span::styled("Workspace Settings", Style::default().fg(text).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "Workspace Settings",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
         Line::from(Span::styled("Active workspace:", Style::default().fg(text))),
         Line::from(Span::styled(
             format!("  Name: {}", app.workspace_name),
             Style::default().fg(text),
         )),
-        Line::from(Span::styled(format!("  Path: {ws_path}"), Style::default().fg(text_dim))),
+        Line::from(Span::styled(
+            format!("  Path: {ws_path}"),
+            Style::default().fg(text_dim),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Use /path in chat input to set workspace path.", Style::default().fg(text_dim))),
+        Line::from(Span::styled(
+            "Use /path in chat input to set workspace path.",
+            Style::default().fg(text_dim),
+        )),
     ];
     frame.render_widget(Paragraph::new(lines), area);
 }
@@ -489,19 +585,59 @@ fn render_interface_settings(
     text_dim: Color,
 ) {
     let lines = vec![
-        Line::from(Span::styled("Interface Settings", Style::default().fg(text).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "Interface Settings",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
-        Line::from(Span::styled(format!("Theme: {}", app.theme_name), Style::default().fg(text))),
-        Line::from(Span::styled(format!("Sidebar: {} (Ctrl+W to toggle)", if app.sidebar_width > 0 { "Visible" } else { "Hidden" }), Style::default().fg(text_dim))),
+        Line::from(Span::styled(
+            format!("Theme: {}", app.theme_name),
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            format!(
+                "Sidebar: {} (Ctrl+W to toggle)",
+                if app.sidebar_width > 0 {
+                    "Visible"
+                } else {
+                    "Hidden"
+                }
+            ),
+            Style::default().fg(text_dim),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Keyboard Shortcuts:", Style::default().fg(text).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("  F1-F3    Mode: Work / Plan / Review", Style::default().fg(text_dim))),
-        Line::from(Span::styled("  F4       Toggle Multi-Agent", Style::default().fg(text_dim))),
-        Line::from(Span::styled("  F5       Toggle One Shot", Style::default().fg(text_dim))),
-        Line::from(Span::styled("  F8       Toggle Git Changes", Style::default().fg(text_dim))),
-        Line::from(Span::styled("  Ctrl+W   Toggle Sidebar", Style::default().fg(text_dim))),
-        Line::from(Span::styled("  Ctrl+S   Settings", Style::default().fg(text_dim))),
-        Line::from(Span::styled("  Ctrl+Q   Quit", Style::default().fg(text_dim))),
+        Line::from(Span::styled(
+            "Keyboard Shortcuts:",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  F1-F3    Mode: Work / Plan / Review",
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            "  F4       Toggle Multi-Agent",
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            "  F5       Toggle One Shot",
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            "  F8       Toggle Git Changes",
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            "  Ctrl+W   Toggle Sidebar",
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            "  Ctrl+S   Settings",
+            Style::default().fg(text_dim),
+        )),
+        Line::from(Span::styled(
+            "  Ctrl+Q   Quit",
+            Style::default().fg(text_dim),
+        )),
     ];
     frame.render_widget(Paragraph::new(lines), area);
 }
@@ -515,19 +651,40 @@ fn render_skills_settings(
     accent: Color,
 ) {
     let mut lines = vec![
-        Line::from(Span::styled("Installed Skills", Style::default().fg(text).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "Installed Skills",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
     ];
     if app.skills_list.is_empty() {
-        lines.push(Line::from(Span::styled("No skills installed.", Style::default().fg(text_dim))));
+        lines.push(Line::from(Span::styled(
+            "No skills installed.",
+            Style::default().fg(text_dim),
+        )));
     } else {
         for skill in &app.skills_list {
             let status = if skill.enabled { "✓" } else { "✗" };
-            let status_color = if skill.enabled { Color::Rgb(63, 185, 80) } else { Color::Rgb(248, 81, 73) };
+            let status_color = if skill.enabled {
+                Color::Rgb(63, 185, 80)
+            } else {
+                Color::Rgb(248, 81, 73)
+            };
             lines.push(Line::from(vec![
-                Span::styled(format!(" {status} "), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
-                Span::styled(&skill.name, Style::default().fg(accent).add_modifier(Modifier::BOLD)),
-                Span::styled(format!(" v{}", skill.version), Style::default().fg(text_dim)),
+                Span::styled(
+                    format!(" {status} "),
+                    Style::default()
+                        .fg(status_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    &skill.name,
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" v{}", skill.version),
+                    Style::default().fg(text_dim),
+                ),
             ]));
             lines.push(Line::from(Span::styled(
                 format!("    {}", skill.description),
@@ -588,7 +745,7 @@ fn render_sessions_dialog(
                     "{} #{}  {}  rounds={}  checkpoints={}  {}",
                     prefix, s.index, s.preview, s.rounds, s.checkpoint_count, s.time
                 ))
-                    .style(style)
+                .style(style)
             })
             .collect();
         let mut list_state = ratatui::widgets::ListState::default();
@@ -617,7 +774,10 @@ fn render_sessions_dialog(
         })
         .unwrap_or_else(|| "no session selected".into());
     let checkpoint_summary = if checkpoints.is_empty() {
-        vec![Line::from(Span::styled("No restore points yet.", Style::default().fg(text_dim)))]
+        vec![Line::from(Span::styled(
+            "No restore points yet.",
+            Style::default().fg(text_dim),
+        ))]
     } else {
         checkpoints
             .iter()
@@ -677,49 +837,157 @@ fn render_help_dialog(
 
     let inner = block.inner(popup_area);
     let help_text = vec![
-        Line::from(Span::styled("Generic Coder TUI — Hotkeys", Style::default().fg(accent).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "Generic Coder TUI — Hotkeys",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Chat", Style::default().fg(text).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("  Enter     Send message", Style::default().fg(text))),
-        Line::from(Span::styled("  Esc       Stop generation", Style::default().fg(text))),
-        Line::from(Span::styled("  ↑/↓       Scroll chat history", Style::default().fg(text))),
-        Line::from(Span::styled("  PgUp/Dn   Fast scroll", Style::default().fg(text))),
-        Line::from(Span::styled("  Tab       Autocomplete file path", Style::default().fg(text))),
+        Line::from(Span::styled(
+            "Chat",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  Enter     Send message",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  Esc       Stop generation",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  ↑/↓       Scroll chat history",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  PgUp/Dn   Fast scroll",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  Tab       Autocomplete file path",
+            Style::default().fg(text),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Modes & Toggles", Style::default().fg(text).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("  F1        Work mode (70 turns)", Style::default().fg(text))),
-        Line::from(Span::styled("  F2        Plan mode (100 turns)", Style::default().fg(text))),
-        Line::from(Span::styled("  F3        Review mode (50 turns)", Style::default().fg(text))),
-        Line::from(Span::styled("  F4        Toggle Multi-Agent", Style::default().fg(text))),
-        Line::from(Span::styled("  F5        Toggle One Shot", Style::default().fg(text))),
-        Line::from(Span::styled("  F6        Toggle YOLO", Style::default().fg(text))),
-        Line::from(Span::styled("  F7        Toggle Auto model routing", Style::default().fg(text))),
-        Line::from(Span::styled("  Shift+Tab Cycle reasoning effort", Style::default().fg(text))),
+        Line::from(Span::styled(
+            "Modes & Toggles",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  F1        Work mode (70 turns)",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  F2        Plan mode (100 turns)",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  F3        Review mode (50 turns)",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  F4        Toggle Multi-Agent",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  F5        Toggle One Shot",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  F6        Toggle YOLO",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  F7        Toggle Auto model routing",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  Shift+Tab Cycle reasoning effort",
+            Style::default().fg(text),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Navigation", Style::default().fg(text).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("  Ctrl+W    Toggle sidebar", Style::default().fg(text))),
-        Line::from(Span::styled("  F8        Toggle Git changes panel", Style::default().fg(text))),
-        Line::from(Span::styled("  Ctrl+S    Open settings", Style::default().fg(text))),
-        Line::from(Span::styled("  Ctrl+R    Open sessions", Style::default().fg(text))),
+        Line::from(Span::styled(
+            "Navigation",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  Ctrl+W    Toggle sidebar",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  F8        Toggle Git changes panel",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  Ctrl+S    Open settings",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  Ctrl+R    Open sessions",
+            Style::default().fg(text),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Commands", Style::default().fg(text).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("  /new      New session", Style::default().fg(text))),
-        Line::from(Span::styled("  /clear    Clear chat", Style::default().fg(text))),
-        Line::from(Span::styled("  /help     Show this help", Style::default().fg(text))),
-        Line::from(Span::styled("  /stop     Stop generation", Style::default().fg(text))),
-        Line::from(Span::styled("  /refresh  Refresh workspace", Style::default().fg(text))),
-        Line::from(Span::styled("  /auto     Toggle auto model routing", Style::default().fg(text))),
-        Line::from(Span::styled("  /profiles Show DeepSeek provider presets", Style::default().fg(text))),
-        Line::from(Span::styled("  /preset <id> Apply a DeepSeek preset", Style::default().fg(text))),
-        Line::from(Span::styled("  /continue <session[@checkpoint]>", Style::default().fg(text))),
-        Line::from(Span::styled("  /fork <session[@checkpoint]>", Style::default().fg(text))),
-        Line::from(Span::styled("  /delete <session>", Style::default().fg(text))),
+        Line::from(Span::styled(
+            "Commands",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  /new      New session",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /clear    Clear chat",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /help     Show this help",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /stop     Stop generation",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /refresh  Refresh workspace",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /auto     Toggle auto model routing",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /profiles Show DeepSeek provider presets",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /preset <id> Apply a DeepSeek preset",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /continue <session[@checkpoint]>",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /fork <session[@checkpoint]>",
+            Style::default().fg(text),
+        )),
+        Line::from(Span::styled(
+            "  /delete <session>",
+            Style::default().fg(text),
+        )),
         Line::from(""),
-        Line::from(Span::styled("System", Style::default().fg(text).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("  Sessions dialog: ←/→ target checkpoint, Enter restore, F fork, D delete", Style::default().fg(text))),
+        Line::from(Span::styled(
+            "System",
+            Style::default().fg(text).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  Sessions dialog: ←/→ target checkpoint, Enter restore, F fork, D delete",
+            Style::default().fg(text),
+        )),
         Line::from(Span::styled("  Ctrl+Q    Quit", Style::default().fg(text))),
         Line::from(""),
-        Line::from(Span::styled("Press any key to close this dialog", Style::default().fg(text).add_modifier(Modifier::ITALIC))),
+        Line::from(Span::styled(
+            "Press any key to close this dialog",
+            Style::default().fg(text).add_modifier(Modifier::ITALIC),
+        )),
     ];
     frame.render_widget(Paragraph::new(help_text), inner);
 }

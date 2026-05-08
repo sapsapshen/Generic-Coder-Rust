@@ -63,8 +63,8 @@ fn file_write_content_from_response(response_content: &str) -> Option<String> {
 }
 
 fn file_write_content_from_tool_block(response_content: &str, path: &str) -> Option<String> {
-    let tool_re = Regex::new(r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</(?:tool_use|tool_call)>")
-        .ok()?;
+    let tool_re =
+        Regex::new(r"(?s)<(?:tool_use|tool_call)>([\s\S]{15,}?)</(?:tool_use|tool_call)>").ok()?;
     for caps in tool_re.captures_iter(response_content) {
         let raw = caps.get(1)?.as_str().trim();
         let parsed = crate::llm::tryparse_json(raw).ok()?;
@@ -109,7 +109,13 @@ fn code_run_request_from_args(args: &Value) -> (String, String) {
         .get("type")
         .or_else(|| args.get("language"))
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| if !command.is_empty() { "bash" } else { "python" })
+        .unwrap_or_else(|| {
+            if !command.is_empty() {
+                "bash"
+            } else {
+                "python"
+            }
+        })
         .to_string();
     (code, code_type)
 }
@@ -127,7 +133,10 @@ fn canonicalize_tool_invocation(tool_name: &str, args: &Value) -> (String, Value
         }
         "file_list" => ("workspace_list".into(), args.clone()),
         "git_show" => {
-            let hash = args.get("hash").and_then(|value| value.as_str()).unwrap_or("");
+            let hash = args
+                .get("hash")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
             if hash.is_empty() {
                 return (tool_name.into(), args.clone());
             }
@@ -206,7 +215,6 @@ impl LlmClient for ToolClientSession {
     fn set_reasoning_effort(&mut self, effort: Option<String>) {
         self.config.reasoning_effort = effort;
     }
-
 
     async fn chat(
         &mut self,
@@ -292,7 +300,6 @@ impl LlmClient for NativeClaudeClientSession {
     fn set_reasoning_effort(&mut self, effort: Option<String>) {
         self.config.reasoning_effort = effort;
     }
-
 
     async fn chat(
         &mut self,
@@ -495,9 +502,10 @@ impl GenericAgent {
             .iter()
             .enumerate()
             .filter_map(|(index, client)| {
-                client.try_read().ok().map(|guard| {
-                    (index, guard.model().to_string(), guard.name().to_string())
-                })
+                client
+                    .try_read()
+                    .ok()
+                    .map(|guard| (index, guard.model().to_string(), guard.name().to_string()))
             })
             .collect();
         if inventory.is_empty() {
@@ -541,14 +549,49 @@ impl GenericAgent {
         }
 
         let strong_keywords = [
-            "debug", "fix", "refactor", "architecture", "design", "security", "migrate",
-            "release", "incident", "compare", "audit", "carefully", "complex", "仔细",
-            "修复", "重构", "架构", "设计", "安全", "迁移", "发布", "审查", "分析",
+            "debug",
+            "fix",
+            "refactor",
+            "architecture",
+            "design",
+            "security",
+            "migrate",
+            "release",
+            "incident",
+            "compare",
+            "audit",
+            "carefully",
+            "complex",
+            "仔细",
+            "修复",
+            "重构",
+            "架构",
+            "设计",
+            "安全",
+            "迁移",
+            "发布",
+            "审查",
+            "分析",
         ];
         let medium_keywords = [
-            "test", "plan", "review", "performance", "optimize", "workflow", "session",
-            "implement", "explain", "实现", "测试", "规划", "评审", "性能", "优化",
-            "工作流", "会话", "说明",
+            "test",
+            "plan",
+            "review",
+            "performance",
+            "optimize",
+            "workflow",
+            "session",
+            "implement",
+            "explain",
+            "实现",
+            "测试",
+            "规划",
+            "评审",
+            "性能",
+            "优化",
+            "工作流",
+            "会话",
+            "说明",
         ];
 
         score += strong_keywords
@@ -745,7 +788,8 @@ impl GenericAgent {
         *self.agent_workflow.write().unwrap() = workflow;
         // Also update current handler if exists
         if let Some(h) = &self.handler {
-            *h.write().unwrap().workflow.write().unwrap() = self.agent_workflow.read().unwrap().clone();
+            *h.write().unwrap().workflow.write().unwrap() =
+                self.agent_workflow.read().unwrap().clone();
         }
     }
 
@@ -916,7 +960,8 @@ impl GenericAgent {
 
         // Inherit mode and workflow from the frontend-selected agent state.
         *handler.write().unwrap().mode.write().unwrap() = *self.agent_mode.read().unwrap();
-        *handler.write().unwrap().workflow.write().unwrap() = self.agent_workflow.read().unwrap().clone();
+        *handler.write().unwrap().workflow.write().unwrap() =
+            self.agent_workflow.read().unwrap().clone();
         self.handler = Some(handler.clone());
 
         // Apply runtime reasoning effort override to the current LLM client
@@ -985,8 +1030,25 @@ impl GenericAgent {
         // ── Workflow execution ──────────────────────────────────────
         let workflow_active = { handler.read().unwrap().workflow.read().unwrap().active };
         if workflow_active {
-            let nodes = { handler.read().unwrap().workflow.read().unwrap().nodes.clone() };
-            let current_node_idx = { handler.read().unwrap().workflow.read().unwrap().current_node };
+            let nodes = {
+                handler
+                    .read()
+                    .unwrap()
+                    .workflow
+                    .read()
+                    .unwrap()
+                    .nodes
+                    .clone()
+            };
+            let current_node_idx = {
+                handler
+                    .read()
+                    .unwrap()
+                    .workflow
+                    .read()
+                    .unwrap()
+                    .current_node
+            };
             let mut all_responses = String::new();
 
             for _node_index in current_node_idx..nodes.len() {
@@ -1067,7 +1129,11 @@ impl GenericAgent {
                 }
 
                 let full_resp = stream_task.await.unwrap_or_default();
-                all_responses.push_str(&format!("\n## {} Mode Output\n\n{}\n", mode_emoji(mode), full_resp));
+                all_responses.push_str(&format!(
+                    "\n## {} Mode Output\n\n{}\n",
+                    mode_emoji(mode),
+                    full_resp
+                ));
 
                 // Advance workflow — signal transition between modes
                 let has_next = handler.write().unwrap().workflow.write().unwrap().advance();
@@ -1232,7 +1298,10 @@ impl AgentHandler {
     pub fn record_error(&self, tool: &str, message: &str, severity: ErrorSeverity, context: Value) {
         let turn = *self.current_turn.read().unwrap();
         let model = self.model_name.read().unwrap().clone();
-        if let Err(e) = self.error_memory.record(tool, message, severity, context, &model, turn) {
+        if let Err(e) = self
+            .error_memory
+            .record(tool, message, severity, context, &model, turn)
+        {
             log::warn!("Failed to record error to memory: {e}");
         }
     }
@@ -1243,6 +1312,7 @@ impl AgentHandler {
         let (tool_name, args) = canonicalize_tool_invocation(tool_name, &args);
         match tool_name.as_str() {
             "code_run" => self.do_code_run(&args),
+            "run_tests" => self.do_run_tests(&args),
             "file_read" => self.do_file_read(&args),
             "file_patch" => self.do_file_patch(&args),
             "file_write" => self.do_file_write(&args, response_content),
@@ -1260,6 +1330,14 @@ impl AgentHandler {
             "workspace_search" => self.do_workspace_search(&args),
             "file_search" => self.do_file_search(&args),
             "content_search" => self.do_content_search(&args),
+            "semantic_search" => self.do_semantic_search(&args),
+            "lsp_find_definition" => self.do_lsp_find_definition(&args),
+            "lsp_find_references" => self.do_lsp_find_references(&args),
+            "lsp_get_diagnostics" => self.do_lsp_get_diagnostics(&args),
+            "lsp_rename_preview" => self.do_lsp_rename_preview(&args),
+            "mcp_list_servers" => self.do_mcp_list_servers(),
+            "mcp_list_tools" => self.do_mcp_list_tools(&args),
+            "mcp_call_tool" => self.do_mcp_call_tool(&args),
             "git_status" => self.do_git_status(&args),
             "git_diff" => self.do_git_diff(&args),
             "git_log" => self.do_git_log(&args),
@@ -1331,6 +1409,41 @@ impl AgentHandler {
         }
     }
 
+    fn do_run_tests(&self, args: &Value) -> StepOutcome {
+        let command = args.get("command").and_then(|v| v.as_str());
+        let path = args
+            .get("path")
+            .or_else(|| args.get("cwd"))
+            .and_then(|v| v.as_str());
+        let max_output_chars = args
+            .get("max_output_chars")
+            .or_else(|| args.get("max_chars"))
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::run_tests(command, path, max_output_chars) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "run_tests",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"command": command, "path": path}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
     fn do_file_read(&self, args: &Value) -> StepOutcome {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         let start = args
@@ -1363,7 +1476,7 @@ impl AgentHandler {
                     next_prompt: Some(String::new()),
                     should_exit: false,
                 }
-            },
+            }
         }
     }
 
@@ -1709,6 +1822,249 @@ impl AgentHandler {
         }
     }
 
+    fn do_semantic_search(&self, args: &Value) -> StepOutcome {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let path = args.get("path").and_then(|v| v.as_str());
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::semantic_search(query, path, max_results) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "semantic_search",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"query": query, "path": path}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_lsp_find_definition(&self, args: &Value) -> StepOutcome {
+        let symbol = args
+            .get("symbol")
+            .or_else(|| args.get("query"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let path = args.get("path").and_then(|v| v.as_str());
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::lsp_find_definition(symbol, path, max_results) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "lsp_find_definition",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"symbol": symbol, "path": path}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_lsp_find_references(&self, args: &Value) -> StepOutcome {
+        let symbol = args
+            .get("symbol")
+            .or_else(|| args.get("query"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let path = args.get("path").and_then(|v| v.as_str());
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::lsp_find_references(symbol, path, max_results) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "lsp_find_references",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"symbol": symbol, "path": path}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_lsp_get_diagnostics(&self, args: &Value) -> StepOutcome {
+        let path = args.get("path").and_then(|v| v.as_str());
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::lsp_get_diagnostics(path, max_results) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "lsp_get_diagnostics",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"path": path}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_lsp_rename_preview(&self, args: &Value) -> StepOutcome {
+        let symbol = args.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
+        let new_name = args.get("new_name").and_then(|v| v.as_str()).unwrap_or("");
+        let path = args.get("path").and_then(|v| v.as_str());
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|value| value as usize);
+
+        match crate::tools::lsp_rename_preview(symbol, new_name, path, max_results) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "lsp_rename_preview",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"symbol": symbol, "new_name": new_name, "path": path}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_mcp_list_servers(&self) -> StepOutcome {
+        match crate::tools::mcp_list_servers() {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "mcp_list_servers",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_mcp_list_tools(&self, args: &Value) -> StepOutcome {
+        let server = args.get("server").and_then(|v| v.as_str());
+        match crate::tools::mcp_list_tools(server) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "mcp_list_tools",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"server": server}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
+    fn do_mcp_call_tool(&self, args: &Value) -> StepOutcome {
+        let server = args.get("server").and_then(|v| v.as_str()).unwrap_or("");
+        let tool = args.get("tool").and_then(|v| v.as_str()).unwrap_or("");
+        let arguments = args
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+
+        match crate::tools::mcp_call_tool(server, tool, arguments) {
+            Ok(result) => StepOutcome {
+                data: result,
+                next_prompt: Some(String::new()),
+                should_exit: false,
+            },
+            Err(e) => {
+                let msg = format!("{:#}", e);
+                self.record_error(
+                    "mcp_call_tool",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    serde_json::json!({"server": server, "tool": tool}),
+                );
+                StepOutcome {
+                    data: serde_json::json!({"error": msg}),
+                    next_prompt: Some(String::new()),
+                    should_exit: false,
+                }
+            }
+        }
+    }
+
     fn do_git_status(&self, args: &Value) -> StepOutcome {
         let path = args.get("path").and_then(|v| v.as_str());
         match crate::tools::git_status(path) {
@@ -2026,14 +2382,13 @@ impl AgentHandler {
     // ── Computer Use ─────────────────────────────────────────────────────
 
     fn do_computer_screenshot(&self, args: &Value) -> StepOutcome {
-        let region = args.get("region").and_then(|v| v.as_array())
+        let region = args
+            .get("region")
+            .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect::<Vec<_>>());
         let display = args.get("display").and_then(|v| v.as_u64());
 
-        match crate::tools::computer_screenshot(
-            region.as_deref(),
-            display,
-        ) {
+        match crate::tools::computer_screenshot(region.as_deref(), display) {
             Ok(result) => StepOutcome {
                 data: result,
                 next_prompt: Some(String::new()),
@@ -2096,7 +2451,12 @@ impl AgentHandler {
             },
             Err(e) => {
                 let msg = format!("{:#}", e);
-                self.record_error("computer_action", &msg, ErrorSeverity::Tool, json!({"action": action}));
+                self.record_error(
+                    "computer_action",
+                    &msg,
+                    ErrorSeverity::Tool,
+                    json!({"action": action}),
+                );
                 StepOutcome {
                     data: json!({"status": "error", "error": msg}),
                     next_prompt: Some(String::new()),
@@ -2154,7 +2514,7 @@ impl AgentHandler {
         &self,
         _response: &LlmResponse,
         tool_calls: &[ToolCall],
-        _tool_results: &[Value],
+        tool_results: &[Value],
         _turn: usize,
         next_prompt: &str,
     ) -> String {
@@ -2177,6 +2537,41 @@ impl AgentHandler {
             .write()
             .unwrap()
             .push(format!("[Agent] {}", summary));
+
+        if let Some(run_tests_result) =
+            tool_calls
+                .iter()
+                .zip(tool_results.iter())
+                .find_map(|(call, result)| {
+                    if call.name == "run_tests" {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                })
+        {
+            let status = run_tests_result
+                .get("status")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            if matches!(status, "failed" | "timeout") {
+                let feedback = run_tests_result
+                    .get("feedback")
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let command = run_tests_result
+                    .get("command")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("tests");
+                return format!(
+                    "{}\n[System] The latest `{}` run failed. Use the structured feedback below to fix the issue before running tests again.\n{}",
+                    next_prompt,
+                    command,
+                    crate::tools::smart_format(&feedback, Some(4000), None)
+                );
+            }
+        }
+
         next_prompt.to_string()
     }
 }
@@ -2205,14 +2600,23 @@ pub async fn agent_runner_loop(
     });
     messages.push(Message {
         role: "user".to_string(),
-        content: MessageContent::Text(user_input),
+        content: MessageContent::Text(user_input.clone()),
         tool_results: None,
     });
 
+    // Accumulate tool events for dream consolidation at session end.
+    // Each entry: (tool_name, args, result)
+    let mut all_tool_events: Vec<(String, Value, Value)> = Vec::new();
+
     for turn in 0..max_turns {
         // Check for stop signal before each turn
-        if stop_signal.as_ref().map_or(false, |s| s.load(Ordering::SeqCst)) {
-            let _ = output_tx.send("\n\n[ABORTED] Stopped by user.\n".to_string()).await;
+        if stop_signal
+            .as_ref()
+            .map_or(false, |s| s.load(Ordering::SeqCst))
+        {
+            let _ = output_tx
+                .send("\n\n[ABORTED] Stopped by user.\n".to_string())
+                .await;
             let mut exit = HashMap::new();
             exit.insert("reason".into(), Value::String("aborted".into()));
             exit.insert("message".into(), Value::String("Stopped by user".into()));
@@ -2277,10 +2681,15 @@ pub async fn agent_runner_loop(
         }
 
         if aborted {
-            let _ = output_tx.send("\n\n[ABORTED] Stopped by user.\n".to_string()).await;
+            let _ = output_tx
+                .send("\n\n[ABORTED] Stopped by user.\n".to_string())
+                .await;
             let mut exit = HashMap::new();
             exit.insert("reason".into(), Value::String("aborted".into()));
-            exit.insert("message".into(), Value::String("Stopped by user mid-stream".into()));
+            exit.insert(
+                "message".into(),
+                Value::String("Stopped by user mid-stream".into()),
+            );
             exit.insert("final_output".into(), Value::String("[ABORTED]".into()));
             return Ok(exit);
         }
@@ -2302,7 +2711,10 @@ pub async fn agent_runner_loop(
                 if join_err.is_cancelled() {
                     let mut exit = HashMap::new();
                     exit.insert("reason".into(), Value::String("aborted".into()));
-                    exit.insert("message".into(), Value::String("Stream cancelled by user".into()));
+                    exit.insert(
+                        "message".into(),
+                        Value::String("Stream cancelled by user".into()),
+                    );
                     exit.insert("final_output".into(), Value::String("[ABORTED]".into()));
                     return Ok(exit);
                 }
@@ -2339,6 +2751,7 @@ pub async fn agent_runner_loop(
                     tc.arguments.clone(),
                     &response.content,
                 );
+                all_tool_events.push((tc.name.clone(), tc.arguments.clone(), outcome.data.clone()));
                 tool_results.push(outcome.data);
                 if outcome.should_exit {
                     should_exit = true;
@@ -2358,11 +2771,7 @@ pub async fn agent_runner_loop(
 
         if should_exit {
             let interrupt_payload = tool_results.iter().find_map(|result| {
-                if result
-                    .get("status")
-                    .and_then(|value| value.as_str())
-                    == Some("INTERRUPT")
-                {
+                if result.get("status").and_then(|value| value.as_str()) == Some("INTERRUPT") {
                     Some(result.clone())
                 } else {
                     None
@@ -2392,10 +2801,30 @@ pub async fn agent_runner_loop(
                 "message".into(),
                 Value::String(format!("exited at turn {}", turn)),
             );
-            exit.insert("final_output".into(), Value::String(final_output));
+            exit.insert("final_output".into(), Value::String(final_output.clone()));
             if let Some(interrupt) = interrupt_payload {
                 exit.insert("interrupt".into(), interrupt);
             }
+
+            // Fire-and-forget dream consolidation
+            {
+                let project_dir = {
+                    let cwd = handler.read().unwrap().cwd.clone();
+                    if cwd.ends_with("temp") {
+                        cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd)
+                    } else {
+                        cwd
+                    }
+                };
+                let intent = user_input.chars().take(200).collect::<String>();
+                let outcome = final_output.chars().take(300).collect::<String>();
+                let events = all_tool_events.clone();
+                let completed_turns = turn + 1;
+                tokio::spawn(async move {
+                    crate::dream::consolidate(&project_dir, &intent, &events, completed_turns, &outcome);
+                });
+            }
+
             return Ok(exit);
         }
 
@@ -2449,6 +2878,25 @@ pub async fn agent_runner_loop(
         "message".into(),
         Value::String(format!("reached max turns ({})", max_turns)),
     );
+
+    // Fire-and-forget dream consolidation (max turns path)
+    {
+        let project_dir = {
+            let cwd = handler.read().unwrap().cwd.clone();
+            if cwd.ends_with("temp") {
+                cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd)
+            } else {
+                cwd
+            }
+        };
+        let intent = user_input.chars().take(200).collect::<String>();
+        let events = all_tool_events;
+        let completed_turns = max_turns;
+        tokio::spawn(async move {
+            crate::dream::consolidate(&project_dir, &intent, &events, completed_turns, "max_turns_reached");
+        });
+    }
+
     Ok(exit)
 }
 
@@ -2481,9 +2929,7 @@ mod tests {
         fn set_tools(&mut self, _tools: Vec<ToolSchema>) {}
 
         fn set_system(&mut self, _system: &str) {}
-        fn set_reasoning_effort(&mut self, _effort: Option<String>) {
-        }
-
+        fn set_reasoning_effort(&mut self, _effort: Option<String>) {}
 
         async fn chat(
             &mut self,
@@ -2594,7 +3040,10 @@ mod tests {
             Some("ask_user requires user interaction")
         );
         let interrupt = exit.get("interrupt").cloned().unwrap_or(Value::Null);
-        assert_eq!(interrupt.get("status").and_then(|value| value.as_str()), Some("INTERRUPT"));
+        assert_eq!(
+            interrupt.get("status").and_then(|value| value.as_str()),
+            Some("INTERRUPT")
+        );
         assert_eq!(
             interrupt.get("message").and_then(|value| value.as_str()),
             Some("ask_user requires user interaction")
@@ -2603,7 +3052,8 @@ mod tests {
 
     #[test]
     fn file_write_content_from_response_prefers_file_content_tag() {
-        let response = "Before\n<file_content>hello\nworld\n</file_content>\nAfter\n```txt\nignored\n```";
+        let response =
+            "Before\n<file_content>hello\nworld\n</file_content>\nAfter\n```txt\nignored\n```";
         assert_eq!(
             file_write_content_from_response(response).as_deref(),
             Some("hello\nworld\n")
@@ -2665,17 +3115,20 @@ mod tests {
             &json!({"path": "/tmp", "pattern": "**/*.png"}),
         );
         assert_eq!(tool_name, "workspace_list");
-        assert_eq!(args.get("path").and_then(|value| value.as_str()), Some("/tmp"));
+        assert_eq!(
+            args.get("path").and_then(|value| value.as_str()),
+            Some("/tmp")
+        );
     }
 
     #[test]
     fn canonicalize_tool_invocation_maps_bash_to_code_run() {
-        let (tool_name, args) = canonicalize_tool_invocation(
-            "bash",
-            &json!({"command": "pwd"}),
-        );
+        let (tool_name, args) = canonicalize_tool_invocation("bash", &json!({"command": "pwd"}));
         assert_eq!(tool_name, "code_run");
-        assert_eq!(args.get("type").and_then(|value| value.as_str()), Some("bash"));
+        assert_eq!(
+            args.get("type").and_then(|value| value.as_str()),
+            Some("bash")
+        );
     }
 
     #[test]
@@ -2685,8 +3138,14 @@ mod tests {
             &json!({"hash": "abc123", "path_repo": "/repo", "max_lines": 50}),
         );
         assert_eq!(tool_name, "code_run");
-        assert_eq!(args.get("type").and_then(|value| value.as_str()), Some("bash"));
-        let command = args.get("command").and_then(|value| value.as_str()).unwrap_or("");
+        assert_eq!(
+            args.get("type").and_then(|value| value.as_str()),
+            Some("bash")
+        );
+        let command = args
+            .get("command")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         assert!(command.contains("cd '/repo'"));
         assert!(command.contains("git --no-pager show 'abc123'"));
         assert!(command.contains("head -n 50"));
@@ -2702,7 +3161,8 @@ mod tests {
         fs::create_dir_all(&test_root).unwrap();
 
         let handler = AgentHandler::new(test_root.clone());
-        let outcome = handler.do_file_write(&json!({ "path": "ANALYSIS.md" }), "No tagged body here");
+        let outcome =
+            handler.do_file_write(&json!({ "path": "ANALYSIS.md" }), "No tagged body here");
 
         assert_eq!(
             outcome.data.get("error").and_then(|value| value.as_str()),
@@ -2711,5 +3171,39 @@ mod tests {
         assert!(!test_root.join("ANALYSIS.md").exists());
 
         let _ = fs::remove_dir_all(&test_root);
+    }
+
+    #[test]
+    fn turn_end_callback_includes_test_feedback_for_failed_run_tests() {
+        let handler = AgentHandler::new(PathBuf::from("."));
+        let prompt = handler.turn_end_callback(
+            &LlmResponse {
+                thinking: String::new(),
+                content: String::new(),
+                tool_calls: Vec::new(),
+                raw: String::new(),
+                stop_reason: String::new(),
+                usage: None,
+            },
+            &[ToolCall {
+                id: "tool-1".to_string(),
+                name: "run_tests".to_string(),
+                arguments: json!({"command": "cargo test --quiet"}),
+            }],
+            &[json!({
+                "status": "failed",
+                "command": "cargo test --quiet",
+                "feedback": {
+                    "summary": "1 test failed",
+                    "failed_tests": ["auth::tests::fails"]
+                }
+            })],
+            0,
+            "",
+        );
+
+        assert!(prompt.contains("cargo test --quiet"));
+        assert!(prompt.contains("auth::tests::fails"));
+        assert!(prompt.contains("failed"));
     }
 }
