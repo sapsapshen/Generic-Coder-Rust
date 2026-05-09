@@ -1349,6 +1349,29 @@ impl AgentHandler {
             "media_info" => self.do_media_info(&args),
             "media_extract" => self.do_media_extract(&args),
             "computer_screenshot" => self.do_computer_screenshot(&args),
+            "computer_zoom" => self.do_computer_zoom(&args),
+            "computer_left_click" => self.do_computer_left_click(&args),
+            "computer_right_click" => self.do_computer_right_click(&args),
+            "computer_middle_click" => self.do_computer_middle_click(&args),
+            "computer_double_click" => self.do_computer_double_click(&args),
+            "computer_triple_click" => self.do_computer_triple_click(&args),
+            "computer_left_click_drag" => self.do_computer_left_click_drag(&args),
+            "computer_mouse_move" => self.do_computer_mouse_move(&args),
+            "computer_left_mouse_down" => self.do_computer_left_mouse_down(&args),
+            "computer_left_mouse_up" => self.do_computer_left_mouse_up(&args),
+            "computer_cursor_position" => self.do_computer_cursor_position(),
+            "computer_scroll" => self.do_computer_scroll(&args),
+            "computer_type" => self.do_computer_type(&args),
+            "computer_key" => self.do_computer_key(&args),
+            "computer_hold_key" => self.do_computer_hold_key(&args),
+            "computer_open_application" => self.do_computer_open_application(&args),
+            "computer_switch_display" => self.do_computer_switch_display(),
+            "computer_request_access" => self.do_computer_request_access(&args),
+            "computer_list_granted_applications" => self.do_computer_list_granted_applications(),
+            "computer_read_clipboard" => self.do_computer_read_clipboard(),
+            "computer_write_clipboard" => self.do_computer_write_clipboard(&args),
+            "computer_wait" => self.do_computer_wait(&args),
+            "computer_batch" => self.do_computer_batch(&args),
             "computer_open" => self.do_computer_open(&args),
             "computer_action" => self.do_computer_action(&args),
             _ => {
@@ -2388,7 +2411,7 @@ impl AgentHandler {
             .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect::<Vec<_>>());
         let display = args.get("display").and_then(|v| v.as_u64());
 
-        match crate::tools::computer_screenshot(region.as_deref(), display) {
+        match crate::computer_use::screenshot(region.as_deref(), display) {
             Ok(result) => StepOutcome {
                 data: result,
                 next_prompt: Some(String::new()),
@@ -2411,7 +2434,7 @@ impl AgentHandler {
         let target = args.get("target").and_then(|v| v.as_str());
         let wait_timeout_ms = args.get("wait_timeout_ms").and_then(|v| v.as_u64());
 
-        match crate::tools::computer_open(application, target, wait_timeout_ms) {
+        match crate::computer_use::computer_open(application, target, wait_timeout_ms) {
             Ok(result) => StepOutcome {
                 data: result,
                 next_prompt: Some(String::new()),
@@ -2443,7 +2466,7 @@ impl AgentHandler {
         let amount = args.get("amount").and_then(|v| v.as_u64());
         let duration = args.get("duration").and_then(|v| v.as_f64());
 
-        match crate::tools::computer_action(action, x, y, text, direction, amount, duration) {
+        match crate::computer_use::computer_action(action, x, y, text, direction, amount, duration) {
             Ok(result) => StepOutcome {
                 data: result,
                 next_prompt: Some(String::new()),
@@ -2463,6 +2486,207 @@ impl AgentHandler {
                     should_exit: false,
                 }
             }
+        }
+    }
+
+    fn do_computer_zoom(&self, args: &Value) -> StepOutcome {
+        let x0 = args.get("x0").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y0 = args.get("y0").and_then(|v| v.as_u64()).unwrap_or(0);
+        let x1 = args.get("x1").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y1 = args.get("y1").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::zoom(x0, y0, x1, y1) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_zoom", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_left_click(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::left_click(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_left_click", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_right_click(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::right_click(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_right_click", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_middle_click(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::middle_click(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_middle_click", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_double_click(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::double_click(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_double_click", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_triple_click(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::triple_click(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_triple_click", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_left_click_drag(&self, args: &Value) -> StepOutcome {
+        let start_x = args.get("start_x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let start_y = args.get("start_y").and_then(|v| v.as_u64()).unwrap_or(0);
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::left_click_drag(start_x, start_y, x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_left_click_drag", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_mouse_move(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::mouse_move(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_mouse_move", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_left_mouse_down(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::left_mouse_down(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_left_mouse_down", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_left_mouse_up(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        match crate::computer_use::left_mouse_up(x, y) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_left_mouse_up", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_cursor_position(&self) -> StepOutcome {
+        match crate::computer_use::cursor_position() {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_cursor_position", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_scroll(&self, args: &Value) -> StepOutcome {
+        let x = args.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+        let y = args.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+        let direction = args.get("direction").and_then(|v| v.as_str()).unwrap_or("down");
+        let amount = args.get("amount").and_then(|v| v.as_u64()).unwrap_or(3);
+        match crate::computer_use::scroll(x, y, direction, amount) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_scroll", &msg, ErrorSeverity::Tool, json!({"x":x,"y":y,"direction":direction})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_type(&self, args: &Value) -> StepOutcome {
+        let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        match crate::computer_use::type_text(text) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_type", &msg, ErrorSeverity::Tool, json!({"text_len": text.len()})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_key(&self, args: &Value) -> StepOutcome {
+        let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        match crate::computer_use::key(text) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_key", &msg, ErrorSeverity::Tool, json!({"key": text})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_hold_key(&self, args: &Value) -> StepOutcome {
+        let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        let duration = args.get("duration").and_then(|v| v.as_f64()).unwrap_or(1.0);
+        match crate::computer_use::hold_key(text, duration) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_hold_key", &msg, ErrorSeverity::Tool, json!({"key": text})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_open_application(&self, args: &Value) -> StepOutcome {
+        let application = args.get("application").and_then(|v| v.as_str()).unwrap_or("");
+        let target = args.get("target").and_then(|v| v.as_str());
+        match crate::computer_use::open_application(application, target) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_open_application", &msg, ErrorSeverity::Tool, json!({"application":application})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_switch_display(&self) -> StepOutcome {
+        match crate::computer_use::switch_display() {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_switch_display", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_request_access(&self, args: &Value) -> StepOutcome {
+        let applications: Vec<String> = args.get("applications")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        match crate::computer_use::request_access(&applications) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_request_access", &msg, ErrorSeverity::Tool, json!({"applications":applications})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_list_granted_applications(&self) -> StepOutcome {
+        match crate::computer_use::list_granted_applications() {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_list_granted_applications", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_read_clipboard(&self) -> StepOutcome {
+        match crate::computer_use::read_clipboard() {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_read_clipboard", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_write_clipboard(&self, args: &Value) -> StepOutcome {
+        let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        match crate::computer_use::write_clipboard(text) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_write_clipboard", &msg, ErrorSeverity::Tool, json!({"text_len":text.len()})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_wait(&self, args: &Value) -> StepOutcome {
+        let duration = args.get("duration").and_then(|v| v.as_f64()).unwrap_or(1.0);
+        match crate::computer_use::wait(duration) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_wait", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
+        }
+    }
+
+    fn do_computer_batch(&self, args: &Value) -> StepOutcome {
+        match crate::computer_use::computer_batch(args) {
+            Ok(result) => StepOutcome { data: result, next_prompt: Some(String::new()), should_exit: false },
+            Err(e) => { let msg = format!("{:#}", e); self.record_error("computer_batch", &msg, ErrorSeverity::Tool, json!({})); StepOutcome { data: json!({"status":"error","error":msg}), next_prompt: Some(String::new()), should_exit: false } }
         }
     }
 

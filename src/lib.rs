@@ -13,6 +13,7 @@
 
 pub mod acp;
 pub mod agent;
+pub mod computer_use;
 pub mod config;
 pub mod dream;
 pub mod error_memory;

@@ -853,7 +853,8 @@ async fn bootstrap(State(state): State<Arc<AppState>>) -> Json<Value> {
         "multi_agent_enabled": *state.multi_agent_enabled.read(),
         "one_shot_enabled": *state.one_shot_enabled.read(),
         "computer_use_enabled": *state.computer_use_enabled.read(),
-        "computer_use_available": cfg!(target_os = "macos") || cfg!(target_os = "linux"),
+        "computer_use_available": true,
+        "computer_use_venv_ready": crate::computer_use::is_venv_ready(),
         "loop_enabled": *state.loop_enabled.read(),
         "workflow_follow_enabled": *state.workflow_follow_enabled.read(),
         "yolo_enabled": *state.yolo_enabled.read(),
@@ -2612,6 +2613,11 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         workflow_follow_enabled: RwLock::new(false),
         yolo_enabled: RwLock::new(false),
     });
+
+    // Initialize Computer Use project directory (for runtime/ Python helpers)
+    crate::computer_use::set_project_dir(config.project_dir.clone());
+    // Warm up the Python venv in background
+    crate::computer_use::warm_venv();
 
     // Bootstrap preset skills (auto-register any new skill dirs in skills/)
     if let Err(e) = state.skills_manager.bootstrap_presets() {
