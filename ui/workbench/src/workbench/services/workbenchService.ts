@@ -551,7 +551,11 @@ export class WorkbenchService extends Disposable {
 
   async sendPrompt(rawPrompt: string): Promise<void> {
     const prompt = rawPrompt.trim();
-    if (!prompt || this.stateValue.isRunning) {
+    if (!prompt) {
+      return;
+    }
+    // Allow slash commands (e.g. /new, /fork, /continue) even when running
+    if (this.stateValue.isRunning && !prompt.startsWith('/')) {
       return;
     }
     this.stateValue.messages.push({ role: 'user', content: prompt });

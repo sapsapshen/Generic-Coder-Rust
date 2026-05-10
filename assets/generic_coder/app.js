@@ -2533,7 +2533,10 @@ ${preview.content || ""}`
     }
     async sendPrompt(rawPrompt) {
       const prompt = rawPrompt.trim();
-      if (!prompt || this.stateValue.isRunning) {
+      if (!prompt) {
+        return;
+      }
+      if (this.stateValue.isRunning && !prompt.startsWith("/")) {
         return;
       }
       this.stateValue.messages.push({ role: "user", content: prompt });
