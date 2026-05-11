@@ -7,6 +7,7 @@ const net = require('net');
 let mainWindow = null;
 let backendProcess = null;
 let startupErrorShown = false;
+let launchPromise = null;
 const BACKEND_HOST = '127.0.0.1';
 const DEFAULT_BACKEND_PORT = 8765;
 let backendPort = DEFAULT_BACKEND_PORT;
@@ -368,6 +369,27 @@ async function startBackend() {
   return false;
 }
 
+async function ensureBackendRunning() {
+  if (!backendProcess) {
+    return startBackend();
+  }
+
+  try {
+    const ready = await isBackendReady();
+    if (ready) {
+      console.log('Reusing existing backend:', backendOrigin());
+      return true;
+    }
+  } catch (error) {
+    // restart below
+  }
+
+  console.warn('Existing backend is unavailable. Restarting it...');
+  stopBackend();
+  await wait(200);
+  return startBackend();
+}
+
 function stopBackend() {
   if (backendProcess) {
     console.log('Stopping backend...');
@@ -447,6 +469,47 @@ function createWindow() {
   });
 }
 
+async function launchWorkbench() {
+  if (launchPromise) {
+    return launchPromise;
+  }
+
+  launchPromise = (async () => {
+    startupErrorShown = false;
+
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow();
+    } else {
+      await mainWindow.loadURL(getLoadingPageUrl());
+    }
+
+    let backendReady = false;
+    try {
+      backendReady = await ensureBackendRunning();
+    } catch (error) {
+      await showStartupError(
+        'Generic Coder backend failed to start',
+        error && error.stack ? error.stack : String(error),
+      );
+    }
+
+    const loaded = startupErrorShown
+      ? false
+      : await loadWorkbenchWhenReady({ retries: backendReady ? 3 : 60, delayMs: 500 });
+
+    if (!loaded && !startupErrorShown && mainWindow && !mainWindow.isDestroyed()) {
+      await showStartupError(
+        'Generic Coder failed to start',
+        'The backend did not become ready, so the shared workbench could not be loaded. Check the app logs for backend startup errors.',
+      );
+    }
+  })().finally(() => {
+    launchPromise = null;
+  });
+
+  return launchPromise;
+}
+
 function getLoadingPageUrl() {
   const html = `<!DOCTYPE html>
   <html lang="en">
@@ -520,29 +583,11 @@ ipcMain.handle('get-backend-url', () => {
 
 // ── App Lifecycle ─────────────────────────────────────────────
 app.whenReady().then(async () => {
-  createWindow();
-  let backendReady = false;
-  try {
-    backendReady = await startBackend();
-  } catch (error) {
-    await showStartupError(
-      'Generic Coder backend failed to start',
-      error && error.stack ? error.stack : String(error),
-    );
-  }
-  const loaded = startupErrorShown
-    ? false
-    : await loadWorkbenchWhenReady({ retries: backendReady ? 3 : 60, delayMs: 500 });
-  if (!loaded && !startupErrorShown && mainWindow && !mainWindow.isDestroyed()) {
-    await showStartupError(
-      'Generic Coder failed to start',
-      'The backend did not become ready, so the shared workbench could not be loaded. Check the app logs for backend startup errors.',
-    );
-  }
+  await launchWorkbench();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      void launchWorkbench();
     }
   });
 });

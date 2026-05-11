@@ -1952,7 +1952,7 @@ async fn set_mode(
     let mode = AgentMode::from_str(&payload.mode).ok_or_else(|| {
         json_error(
             StatusCode::BAD_REQUEST,
-            "Invalid mode. Use: work, plan, review",
+            "Invalid mode. Use: ask, plan, build, review",
         )
     })?;
     *state.current_mode.write() = mode;

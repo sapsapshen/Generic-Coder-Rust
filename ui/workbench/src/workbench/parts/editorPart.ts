@@ -7,36 +7,187 @@ import { LayoutService } from '../services/layoutService';
 import { ILayoutService, IWorkbenchService } from '../services/serviceIds';
 import { WorkbenchService } from '../services/workbenchService';
 
-/** Parse message content splitting out <thinking>...</thinking> blocks. */
-function renderMessageContent(raw: string, showAgentLogs: boolean, streaming?: boolean): string {
+const MODE_DISPLAY: Record<string, { icon: string; label: string }> = {
+  ask:    { icon: 'comment-discussion', label: 'Ask' },
+  plan:   { icon: 'list-ordered',       label: 'Plan' },
+  build:  { icon: 'tools',              label: 'Build' },
+  review: { icon: 'eye',                label: 'Review' },
+  work:   { icon: 'tools',              label: 'Work' },
+};
+
+function parseToolBlock(rawBlock: string): { name: string; args: string } | null {
+  try {
+    const obj = JSON.parse(rawBlock.trim());
+    const name = obj.name || obj.tool || '(tool)';
+    const input = obj.input || obj.arguments || obj.parameters || obj.params || {};
+    const args = typeof input === 'string' ? input : JSON.stringify(input, null, 2);
+    return { name, args };
+  } catch {
+    return null;
+  }
+}
+
+function renderDetailEvents(detailEvents: any[]): string {
+  if (!detailEvents || detailEvents.length === 0) return '';
+  const items = detailEvents.map((ev: any) => {
+    const type = ev.type || ev.event || '';
+    let emoji = '▸';
+    let text = '';
+    if (type === 'acp_plan' || type === 'oneshot_plan') {
+      emoji = '📋'; text = escapeHtml(ev.plan || ev.content || 'Plan ready');
+    } else if (type === 'acp_step_start') {
+      emoji = '▶'; text = escapeHtml(ev.label || ev.step || `Step ${(ev.index ?? 0) + 1}`);
+    } else if (type === 'acp_step_done' || type === 'oneshot_done') {
+      emoji = '✅'; text = escapeHtml(ev.label || ev.summary || 'Step done');
+    } else if (type === 'acp_step_failed') {
+      emoji = '❌'; text = escapeHtml(ev.label || ev.error || 'Step failed');
+    } else if (type === 'acp_done') {
+      emoji = '🏁'; text = escapeHtml(ev.summary || 'Done');
+    } else {
+      text = escapeHtml(type + (ev.label ? ': ' + ev.label : ''));
+    }
+    return `<div class="event-block__item">${emoji} ${text}</div>`;
+  });
+  return `<div class="event-block">${items.join('')}</div>`;
+}
+
+function renderModeBadge(mode?: string): string {
+  if (!mode) return '';
+  const info = MODE_DISPLAY[mode];
+  if (!info) return '';
+  return `<span class="mode-badge mode-badge--${escapeHtml(mode)}"><i class="codicon codicon-${info.icon}"></i>${info.label}</span>`;
+}
+
+function renderAgentWorkingIndicator(): string {
+  return `<div class="agent-working"><div class="agent-working__dot"></div><div class="agent-working__dot"></div><div class="agent-working__dot"></div><span class="agent-working__label">Agent is working…</span></div>`;
+}
+
+function renderMessageContent(message: any, showDetailedAgentLogs: boolean): string {
+  const streaming = message.streaming;
+  const raw: string = message.content || '';
+
+  // For agent-log messages
+  if (message.kind === 'agent-log') {
+    if (!showDetailedAgentLogs) {
+      if (streaming) {
+        return renderAgentWorkingIndicator();
+      }
+      return ''; // filtered out in buildChatFeedHtml
+    }
+    // Detailed view: render events + tool blocks
+    let html = '';
+    if (message.detail_events?.length) {
+      html += renderDetailEvents(message.detail_events);
+    }
+    // Render tool use blocks from content
+    const toolRe = /<(?:tool_use|tool_call)>([\s\S]*?)<\/(?:tool_use|tool_call)>/g;
+    let toolMatch: RegExpExecArray | null;
+    while ((toolMatch = toolRe.exec(raw)) !== null) {
+      const parsed = parseToolBlock(toolMatch[1]);
+      if (parsed) {
+        html += `<details class="tool-block"><summary class="tool-block__summary"><i class="codicon codicon-tools"></i> ${escapeHtml(parsed.name)}</summary><pre class="tool-block__content">${escapeHtml(parsed.args)}</pre></details>`;
+      }
+    }
+    // Render main text (stripped of tool blocks)
+    const stripped = raw
+      .replace(/<(?:tool_use|tool_call)>[\s\S]*?(?:<\/(?:tool_use|tool_call)>|$)/g, '')
+      .replace(/<summary>[\s\S]*?(?:<\/summary>|$)/g, '')
+      .replace(/<\/?(?:summary|tool_use|tool_call)>/g, '')
+      .trim();
+    if (stripped) {
+      html += `<pre class="message__text${streaming ? ' message__text--streaming' : ''}">${escapeHtml(stripped)}</pre>`;
+    }
+    return html || renderAgentWorkingIndicator();
+  }
+
+  // Regular assistant/user messages
   const sanitized = raw
     .replace(/<(?:tool_use|tool_call)>[\s\S]*?(?:<\/(?:tool_use|tool_call)>|$)/g, '')
     .replace(/<summary>[\s\S]*?(?:<\/summary>|$)/g, '')
     .replace(/<\/?(?:summary|tool_use|tool_call)>/g, '')
     .trim();
+
   const thinkingRe = /<thinking>([\s\S]*?)<\/thinking>/g;
   const parts: string[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
+
   while ((m = thinkingRe.exec(sanitized)) !== null) {
     if (m.index > last) {
       parts.push(`<pre class="message__text">${escapeHtml(sanitized.slice(last, m.index))}</pre>`);
     }
-    if (showAgentLogs) {
+    if (showDetailedAgentLogs) {
+      const isStreamingThinking = streaming && m.index + m[0].length >= sanitized.length;
       parts.push(
         `<details class="thinking-block" open>` +
-        `<summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Reasoning</summary>` +
+        `<summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Thinking${isStreamingThinking ? '<span class="thinking-block__streaming-dot"></span>' : ''}</summary>` +
         `<pre class="thinking-block__content">${escapeHtml(m[1].trim())}</pre>` +
         `</details>`,
       );
     }
     last = m.index + m[0].length;
   }
+
   const tail = sanitized.slice(last);
   if (tail) {
     parts.push(`<pre class="message__text${streaming ? ' message__text--streaming' : ''}">${escapeHtml(tail)}</pre>`);
   }
   return parts.join('') || `<pre class="message__text${streaming ? ' message__text--streaming' : ''}"></pre>`;
+}
+
+function buildMessageHtml(message: any, showDetailedAgentLogs: boolean): string {
+  const isAgentLog = message.kind === 'agent-log';
+
+  // Filter out non-streaming finished agent-log messages when detailed logs off
+  if (isAgentLog && !showDetailedAgentLogs && !message.streaming) {
+    return '';
+  }
+
+  const roleClass = isAgentLog ? 'agent' : message.role === 'user' ? 'user' : 'assistant';
+  const avatarIcon = isAgentLog ? 'terminal' : message.role === 'user' ? 'account' : 'sparkle';
+  const avatarClass = isAgentLog ? 'message__avatar--agent' : message.role === 'assistant' ? 'message__avatar--assistant' : '';
+
+  const roleLabel = isAgentLog
+    ? (message.streaming ? 'agent · working' : 'agent log')
+    : message.role;
+
+  const spinner = message.streaming
+    ? '<span class="message__spinner"></span>'
+    : '';
+
+  const modeBadge = !isAgentLog && message.mode ? renderModeBadge(message.mode) : '';
+
+  const contentHtml = renderMessageContent(message, showDetailedAgentLogs);
+
+  return `
+    <article class="message message--${escapeHtml(roleClass)}${message.streaming ? ' message--streaming' : ''}">
+      <div class="message__avatar ${avatarClass}"><i class="codicon codicon-${avatarIcon}"></i></div>
+      <div class="message__body">
+        <div class="message__meta">
+          <span class="message__role">${escapeHtml(roleLabel)}</span>
+          ${spinner}
+          ${modeBadge}
+        </div>
+        <div class="message__content">${contentHtml}</div>
+      </div>
+    </article>`;
+}
+
+function buildChatFeedHtml(messages: any[], showDetailedAgentLogs: boolean): string {
+  if (messages.length === 0) {
+    return `
+      <div class="chat-empty">
+        <div class="chat-empty__icon"><i class="codicon codicon-sparkle"></i></div>
+        <div class="chat-empty__text">Start a conversation — describe a task or ask a question.</div>
+        <div class="chat-empty__modes">
+          ${renderModeBadge('ask')}
+          ${renderModeBadge('plan')}
+          ${renderModeBadge('build')}
+          ${renderModeBadge('review')}
+        </div>
+      </div>`;
+  }
+  return messages.map((m) => buildMessageHtml(m, showDetailedAgentLogs)).join('');
 }
 
 export class EditorPart extends Disposable {
@@ -70,24 +221,7 @@ export class EditorPart extends Disposable {
 
     if (activeTab.kind === 'chat') {
       this.disposeEditor();
-      surface.innerHTML = `
-        <div class="chat-feed" id="chat-feed">
-          ${this.workbenchService.state.messages
-            .map((message) => `
-                <article class="message message--${escapeHtml(message.role)}">
-                  <div class="message__avatar"><i class="codicon codicon-${message.role === 'user' ? 'account' : 'sparkle'}"></i></div>
-                  <div class="message__body">
-                    <div class="message__role">${escapeHtml(message.role)}</div>
-                    <div class="message__content">${renderMessageContent(message.content || '', this.workbenchService.state.showAgentLogs, message.streaming)}</div>
-                  </div>
-                </article>`,
-            )
-            .join('')}
-        </div>`;
-      const feed = surface.querySelector<HTMLDivElement>('#chat-feed');
-      if (feed) {
-        feed.scrollTop = feed.scrollHeight;
-      }
+      this.renderChat(surface);
       return;
     }
 
@@ -117,6 +251,21 @@ export class EditorPart extends Disposable {
       </div>
       <div class="preview-host" id="preview-host"></div>`;
     void this.renderTextEditor(activeTab.diff, 'diff');
+  }
+
+  private renderChat(surface: HTMLDivElement): void {
+    const state = this.workbenchService.state;
+    const feed = surface.querySelector<HTMLDivElement>('#chat-feed');
+    const wasAtBottom = feed
+      ? feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 40
+      : true;
+
+    surface.innerHTML = `<div class="chat-feed" id="chat-feed">${buildChatFeedHtml(state.messages, state.showDetailedAgentLogs)}</div>`;
+
+    const newFeed = surface.querySelector<HTMLDivElement>('#chat-feed');
+    if (newFeed && wasAtBottom) {
+      newFeed.scrollTop = newFeed.scrollHeight;
+    }
   }
 
   private renderTabs(): void {
@@ -182,8 +331,9 @@ export class EditorPart extends Disposable {
 
   private computeRenderKey(activeTab: EditorTab): string {
     if (activeTab.kind === 'chat') {
-      const lastMessage = this.workbenchService.state.messages[this.workbenchService.state.messages.length - 1];
-      return `chat:${this.workbenchService.state.activeTabId}:${this.workbenchService.state.showAgentLogs}:${this.workbenchService.state.messages.length}:${lastMessage?.content || ''}`;
+      const state = this.workbenchService.state;
+      const lastMessage = state.messages[state.messages.length - 1];
+      return `chat:${state.activeTabId}:${state.showDetailedAgentLogs}:${state.messages.length}:${lastMessage?.content || ''}:${lastMessage?.streaming}`;
     }
     if (activeTab.kind === 'preview') {
       return `preview:${activeTab.path}:${activeTab.preview.kind}:${activeTab.preview.size}:${this.workbenchService.state.theme}`;

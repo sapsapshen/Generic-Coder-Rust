@@ -35,7 +35,7 @@ impl AgentMode {
 
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "work" => Some(Self::Work),
+            "work" | "ask" | "build" => Some(Self::Work),
             "plan" => Some(Self::Plan),
             "review" => Some(Self::Review),
             _ => None,

@@ -192,7 +192,8 @@ export class SidebarPart extends Disposable {
   }
 
   private bindChat(container: HTMLElement): void {
-    container.querySelector('[data-new-chat="1"]')?.addEventListener('click', () => {
+    container.querySelector('[data-new-chat="1"]')?.addEventListener('click', async () => {
+      if (this.workbenchService.state.isRunning) await this.workbenchService.stopTask();
       void this.workbenchService.sendPrompt('/new');
     });
     container.querySelectorAll<HTMLElement>('[data-inspect-session]').forEach((button) => {
@@ -333,9 +334,11 @@ export class SidebarPart extends Disposable {
     const currentNode = state.workflowCurrentNode;
 
     const MODE_META: Record<string, { icon: string; label: string; description: string; color: string }> = {
-      work: { icon: 'tools', label: 'Work', description: 'Implement & execute tasks', color: '#4ec9b0' },
-      plan: { icon: 'list-ordered', label: 'Plan', description: 'Explore & design without touching code', color: '#9cdcfe' },
-      review: { icon: 'eye', label: 'Review', description: 'Audit code for issues & suggest fixes', color: '#ce9178' },
+      ask:    { icon: 'comment-discussion', label: 'Ask',    description: 'Q&A and code explanation',            color: '#dcdcaa' },
+      work:   { icon: 'tools',              label: 'Work',   description: 'Implement & execute tasks',            color: '#4ec9b0' },
+      plan:   { icon: 'list-ordered',       label: 'Plan',   description: 'Explore & design without touching code', color: '#9cdcfe' },
+      build:  { icon: 'tools',              label: 'Build',  description: 'Implement & execute tasks',            color: '#4ec9b0' },
+      review: { icon: 'eye',                label: 'Review', description: 'Audit code for issues & suggest fixes', color: '#ce9178' },
     };
 
     const statusBanner = active
@@ -363,8 +366,9 @@ export class SidebarPart extends Disposable {
               </span>
               <div class="wf-node__meta">
                 <select class="wf-node__mode-select select-inline" data-node-mode="${i}">
-                  <option value="work"${node.mode === 'work' ? ' selected' : ''}>Work</option>
+                  <option value="ask"${node.mode === 'ask' ? ' selected' : ''}>Ask</option>
                   <option value="plan"${node.mode === 'plan' ? ' selected' : ''}>Plan</option>
+                  <option value="build"${node.mode === 'build' || node.mode === 'work' ? ' selected' : ''}>Build</option>
                   <option value="review"${node.mode === 'review' ? ' selected' : ''}>Review</option>
                 </select>
                 <span class="wf-node__desc muted">${meta.description}</span>
@@ -401,8 +405,9 @@ export class SidebarPart extends Disposable {
         ${canAdd ? `
         <div class="wf-add-row">
           <span class="muted">Add step:</span>
-          <button class="wf-add-btn" data-wf-add="work"><i class="codicon codicon-tools"></i> Work</button>
+          <button class="wf-add-btn" data-wf-add="ask"><i class="codicon codicon-comment-discussion"></i> Ask</button>
           <button class="wf-add-btn" data-wf-add="plan"><i class="codicon codicon-list-ordered"></i> Plan</button>
+          <button class="wf-add-btn" data-wf-add="build"><i class="codicon codicon-tools"></i> Build</button>
           <button class="wf-add-btn" data-wf-add="review"><i class="codicon codicon-eye"></i> Review</button>
         </div>` : '<div class="muted wf-limit-note"><i class="codicon codicon-info"></i> Maximum 3 steps reached</div>'}
       </section>
@@ -415,13 +420,13 @@ export class SidebarPart extends Disposable {
 
   private bindWorkflow(container: HTMLElement): void {
     // Build a mutable draft of nodes from current state, updated on interactions
-    const buildNodes = (): Array<{ mode: 'work' | 'plan' | 'review'; label: string }> => {
+    const buildNodes = (): Array<{ mode: any; label: string }> => {
       const modeSelects = container.querySelectorAll<HTMLSelectElement>('[data-node-mode]');
       const labelInputs = container.querySelectorAll<HTMLInputElement>('[data-node-label]');
-      const result: Array<{ mode: 'work' | 'plan' | 'review'; label: string }> = [];
+      const result: Array<{ mode: any; label: string }> = [];
       modeSelects.forEach((select, i) => {
         result.push({
-          mode: select.value as 'work' | 'plan' | 'review',
+          mode: select.value as any,
           label: labelInputs[i]?.value.trim() || '',
         });
       });
@@ -431,7 +436,7 @@ export class SidebarPart extends Disposable {
     // Add step buttons
     container.querySelectorAll<HTMLElement>('[data-wf-add]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const mode = btn.dataset.wfAdd as 'work' | 'plan' | 'review';
+        const mode = btn.dataset.wfAdd as any;
         const current = buildNodes();
         const updated = [...current, { mode, label: '' }];
         void this.workbenchService.saveWorkflow(updated);

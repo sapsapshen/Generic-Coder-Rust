@@ -31,13 +31,14 @@ export class LayoutService {
             <section class="composer">
               <div class="composer__toolbar">
                 <select id="mode-select" class="select-inline">
-                  <option value="work">Work</option>
+                  <option value="ask">Ask</option>
                   <option value="plan">Plan</option>
+                  <option value="build">Build</option>
                   <option value="review">Review</option>
                 </select>
                 <label class="toggle-inline"><input type="checkbox" id="multi-agent-toggle" />Multi-Agent</label>
                 <label class="toggle-inline"><input type="checkbox" id="one-shot-toggle" />One Shot</label>
-                <label class="toggle-inline"><input type="checkbox" id="agent-logs-toggle" checked />Agent Logs</label>
+                <label class="toggle-inline toggle-inline--agent-logs"><input type="checkbox" id="agent-logs-toggle" checked />Agent Logs</label>
                 <label class="toggle-inline toggle-inline--loop"><input type="checkbox" id="loop-toggle" disabled />Loop</label>
                 <label class="toggle-inline toggle-inline--workflow"><input type="checkbox" id="workflow-follow-toggle" /><span id="workflow-follow-label">Workflow</span></label>
                 <label class="toggle-inline toggle-inline--computer-use"><input type="checkbox" id="computer-use-toggle" />Computer Use</label>
@@ -70,7 +71,7 @@ export class LayoutService {
           <div class="statusbar__left">
             <span class="status-pill"><i class="codicon codicon-symbol-misc"></i><span id="status-model">Model offline</span></span>
             <span class="status-pill"><i class="codicon codicon-folder-opened"></i><span id="status-workspace">No workspace</span></span>
-            <span class="status-pill"><i class="codicon codicon-play-circle"></i><span id="status-mode">Work</span></span>
+            <span class="status-pill"><i class="codicon codicon-play-circle"></i><span id="status-mode">Build</span></span>
           </div>
           <div class="statusbar__right">
             <span class="status-pill" id="status-usage"></span>

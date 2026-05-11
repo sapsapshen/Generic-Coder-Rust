@@ -18,7 +18,7 @@ import type {
 } from '../../types';
 
 export type ViewId = 'explorer' | 'scm' | 'extensions' | 'chat' | 'settings' | 'workflow';
-export type ModeId = 'work' | 'plan' | 'review';
+export type ModeId = 'ask' | 'plan' | 'build' | 'review';
 
 export type EditorTab =
   | { id: 'chat'; title: string; kind: 'chat' }
@@ -97,7 +97,7 @@ export interface WorkbenchState {
   currentMode: ModeId;
   multiAgentEnabled: boolean;
   oneShotEnabled: boolean;
-  showAgentLogs: boolean;
+  showDetailedAgentLogs: boolean;
   planRemaining: number;
   quickOpenVisible: boolean;
   inputValue: string;
@@ -147,10 +147,10 @@ export function createInitialWorkbenchState(): WorkbenchState {
     currentSessionCheckpoints: [],
     checkpointPanelSessionIndex: null,
     checkpointPanelEntries: [],
-    currentMode: 'work',
+    currentMode: 'build',
     multiAgentEnabled: false,
     oneShotEnabled: false,
-    showAgentLogs: true,
+    showDetailedAgentLogs: true,
     planRemaining: -1,
     quickOpenVisible: false,
     inputValue: '',

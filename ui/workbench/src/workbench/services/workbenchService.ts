@@ -23,7 +23,8 @@ export class WorkbenchService extends Disposable {
   private readonly changeEmitter = this._register(new Emitter<Readonly<WorkbenchState>>());
   readonly onDidChangeState = this.changeEmitter.event;
   private pollingTaskId: string | null = null;
-  private static readonly AGENT_LOGS_STORAGE_KEY = 'generic-coder-show-agent-logs';
+  private static readonly AGENT_LOGS_STORAGE_KEY = 'generic-coder-show-detailed-agent-logs';
+  private static readonly CONTROL_COMMANDS = new Set(['/ask', '/plan', '/build', '/work', '/review', '/clear']);
 
   private readonly notifications: NotificationService;
 
@@ -43,7 +44,7 @@ export class WorkbenchService extends Disposable {
     }
     const storedAgentLogs = window.localStorage.getItem(WorkbenchService.AGENT_LOGS_STORAGE_KEY);
     if (storedAgentLogs !== null) {
-      this.stateValue.showAgentLogs = storedAgentLogs !== 'false';
+      this.stateValue.showDetailedAgentLogs = storedAgentLogs !== 'false';
     }
     this.applyTheme(false);
     await this.hydrateWorkspacePickerToken();
@@ -54,34 +55,57 @@ export class WorkbenchService extends Disposable {
     this._register(toDisposable(() => window.clearInterval(interval)));
   }
 
-  private ensureTaskPlaceholder(preview: string): void {
+  private ensureTaskPlaceholder(preview: string, detailEvents: any[] = [], taskId?: string): void {
     const content = preview || '...';
+    const nextMessage: ChatMessage = {
+      role: 'agent-log',
+      kind: 'agent-log',
+      content,
+      streaming: true,
+      task_id: taskId || undefined,
+      detail_events: detailEvents,
+    };
+
+    if (taskId) {
+      const existingIndex = this.stateValue.messages.findIndex(
+        (m) => m.kind === 'agent-log' && m.task_id === taskId,
+      );
+      if (existingIndex >= 0) {
+        this.stateValue.messages[existingIndex] = nextMessage;
+        this.stateValue.taskPlaceholderIndex = existingIndex;
+        return;
+      }
+    }
+
     if (
       typeof this.stateValue.taskPlaceholderIndex === 'number'
       && this.stateValue.messages[this.stateValue.taskPlaceholderIndex]
     ) {
-      this.stateValue.messages[this.stateValue.taskPlaceholderIndex] = {
-        role: 'assistant',
-        content,
-        streaming: true,
-      };
+      this.stateValue.messages[this.stateValue.taskPlaceholderIndex] = nextMessage;
       return;
     }
 
     const lastIndex = this.stateValue.messages.length - 1;
     const lastMessage = this.stateValue.messages[lastIndex];
-    if (lastMessage?.role === 'assistant' && lastMessage.streaming) {
-      this.stateValue.messages[lastIndex] = {
-        role: 'assistant',
-        content,
-        streaming: true,
-      };
+    if (lastMessage?.kind === 'agent-log' && lastMessage.streaming) {
+      this.stateValue.messages[lastIndex] = nextMessage;
       this.stateValue.taskPlaceholderIndex = lastIndex;
       return;
     }
 
-    this.stateValue.messages.push({ role: 'assistant', content, streaming: true });
+    this.stateValue.messages.push(nextMessage);
     this.stateValue.taskPlaceholderIndex = this.stateValue.messages.length - 1;
+  }
+
+  private discardTaskPlaceholder(): void {
+    if (typeof this.stateValue.taskPlaceholderIndex !== 'number') {
+      return;
+    }
+    const message = this.stateValue.messages[this.stateValue.taskPlaceholderIndex];
+    if (message?.kind === 'agent-log') {
+      this.stateValue.messages.splice(this.stateValue.taskPlaceholderIndex, 1);
+    }
+    this.stateValue.taskPlaceholderIndex = null;
   }
 
   private maybeResumePendingTask(data: BootstrapPayload): void {
@@ -91,7 +115,11 @@ export class WorkbenchService extends Disposable {
     }
 
     this.stateValue.pendingTaskId = pendingTaskId;
-    this.ensureTaskPlaceholder(data.pending_task?.preview || 'Starting task...');
+    this.ensureTaskPlaceholder(
+      data.pending_task?.preview || 'Starting task...',
+      data.pending_task?.acp_events || [],
+      pendingTaskId,
+    );
     void this.pollTask(pendingTaskId);
   }
 
@@ -491,8 +519,8 @@ export class WorkbenchService extends Disposable {
     this.emitChange();
   }
 
-  setShowAgentLogs(enabled: boolean): void {
-    this.stateValue.showAgentLogs = enabled;
+  setShowDetailedAgentLogs(enabled: boolean): void {
+    this.stateValue.showDetailedAgentLogs = enabled;
     window.localStorage.setItem(WorkbenchService.AGENT_LOGS_STORAGE_KEY, String(enabled));
     this.emitChange();
   }
@@ -538,7 +566,7 @@ export class WorkbenchService extends Disposable {
     return loopKeywords.some((kw) => lower.includes(kw));
   }
 
-  async saveWorkflow(nodes: Array<{ mode: 'work' | 'plan' | 'review'; label: string }>): Promise<void> {
+  async saveWorkflow(nodes: Array<{ mode: 'ask' | 'plan' | 'build' | 'review' | 'work'; label: string }>): Promise<void> {
     try {
       await this.api.saveWorkflow(nodes);
       await this.loadWorkflowState();
@@ -565,11 +593,19 @@ export class WorkbenchService extends Disposable {
     if (!prompt) {
       return;
     }
-    // Allow slash commands (e.g. /new, /fork, /continue) even when running
+    // Allow slash commands even when running; block non-slash input
     if (this.stateValue.isRunning && !prompt.startsWith('/')) {
       return;
     }
-    this.stateValue.messages.push({ role: 'user', content: prompt });
+    const isControlCommand = WorkbenchService.CONTROL_COMMANDS.has(prompt);
+    if (!isControlCommand) {
+      this.stateValue.messages.push({
+        role: 'user',
+        content: prompt,
+        mode: this.stateValue.currentMode,
+        timestamp: Date.now(),
+      });
+    }
     this.ensureChatTab();
     this.stateValue.activeTabId = 'chat';
     this.stateValue.inputValue = '';
@@ -592,11 +628,13 @@ export class WorkbenchService extends Disposable {
         throw new Error(payload.error || 'Task creation failed');
       }
       this.stateValue.pendingTaskId = payload.task_id;
-      this.stateValue.messages.push({ role: 'assistant', content: '...', streaming: true });
-      this.stateValue.taskPlaceholderIndex = this.stateValue.messages.length - 1;
+      if (!prompt.startsWith('/')) {
+        this.ensureTaskPlaceholder('Starting task...', [], payload.task_id);
+      }
       this.emitChange();
       await this.pollTask(payload.task_id);
     } catch (error) {
+      this.discardTaskPlaceholder();
       this.stateValue.isRunning = false;
       this.emitChange();
       this.notifyError(error, 'Failed to send prompt');
@@ -795,14 +833,18 @@ export class WorkbenchService extends Disposable {
     this.stateValue.pendingTaskId = data.pending_task?.task_id || null;
     this.stateValue.taskPlaceholderIndex = null;
     if (data.is_running && data.pending_task?.task_id) {
-      this.ensureTaskPlaceholder(data.pending_task.preview || 'Starting task...');
+      this.ensureTaskPlaceholder(
+        data.pending_task.preview || 'Starting task...',
+        data.pending_task.acp_events || [],
+        data.pending_task.task_id,
+      );
     }
     this.applyModelSettings(data);
     this.stateValue.providerProfiles = data.provider_profiles || this.stateValue.providerProfiles;
     this.stateValue.workspace = data.workspace || this.stateValue.workspace;
     this.syncWorkspaceDraftFromActive();
     this.stateValue.remote = data.remote || this.stateValue.remote;
-    this.stateValue.currentMode = data.mode || 'work';
+    this.stateValue.currentMode = (data.mode as ModeId) || 'build';
     this.stateValue.workflowNodes = data.workflow?.nodes || [];
     this.stateValue.workflowActive = Boolean(data.workflow?.active);
     this.stateValue.workflowCurrentNode = data.workflow?.current_node || 0;
@@ -934,26 +976,33 @@ export class WorkbenchService extends Disposable {
     try {
       while (true) {
         const payload = await this.api.task(taskId);
-        if (typeof this.stateValue.taskPlaceholderIndex === 'number') {
+        this.ensureTaskPlaceholder(payload.preview || '...', payload.acp_events || [], taskId);
+        if (payload.done && typeof this.stateValue.taskPlaceholderIndex === 'number') {
           this.stateValue.messages[this.stateValue.taskPlaceholderIndex] = {
-            role: 'assistant',
-            content: payload.done ? payload.final || payload.preview || 'Done' : payload.preview || '...',
-            streaming: !payload.done,
+            ...this.stateValue.messages[this.stateValue.taskPlaceholderIndex],
+            role: 'agent-log',
+            kind: 'agent-log',
+            content: payload.final || payload.preview || 'Done',
+            streaming: false,
+            task_id: taskId,
+            detail_events: payload.acp_events || [],
           };
         }
         this.emitChange();
         if (payload.done) {
-          // Capture token usage
-          if (payload.usage && typeof payload.usage.prompt_tokens === 'number') {
+          // Normalize token usage across provider formats
+          const promptTokens = payload.usage?.prompt_tokens ?? payload.usage?.input_tokens;
+          const completionTokens = payload.usage?.completion_tokens ?? payload.usage?.output_tokens;
+          if (typeof promptTokens === 'number' || typeof completionTokens === 'number') {
             this.stateValue.lastUsage = {
-              prompt_tokens: payload.usage.prompt_tokens || 0,
-              completion_tokens: payload.usage.completion_tokens || 0,
-              cached_tokens: payload.usage.prompt_cache_hit_tokens ?? 0,
+              prompt_tokens: promptTokens || 0,
+              completion_tokens: completionTokens || 0,
+              cached_tokens: payload.usage?.prompt_cache_hit_tokens ?? payload.usage?.cached_tokens ?? 0,
             };
           }
           break;
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 700));
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
       }
       this.stateValue.pendingTaskId = null;
       this.stateValue.taskPlaceholderIndex = null;

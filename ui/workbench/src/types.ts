@@ -2,6 +2,11 @@ export interface ChatMessage {
   role: string;
   content: string;
   streaming?: boolean;
+  kind?: string;
+  mode?: string;
+  timestamp?: number;
+  task_id?: string;
+  detail_events?: any[];
 }
 
 export interface WorkspaceEntry {
@@ -60,7 +65,7 @@ export interface SkillEntry {
 }
 
 export interface WorkflowNode {
-  mode: 'work' | 'plan' | 'review';
+  mode: 'ask' | 'plan' | 'build' | 'review' | 'work';
   label?: string;
   completed?: boolean;
 }
@@ -149,6 +154,7 @@ export interface BootstrapPayload {
   pending_task?: {
     task_id: string;
     preview?: string;
+    acp_events?: any[];
   } | null;
   model?: string;
   model_index?: number;
@@ -157,7 +163,7 @@ export interface BootstrapPayload {
   llm_form?: ModelState;
   models?: ModelsPayload;
   provider_profiles?: ProviderProfile[];
-  mode?: 'work' | 'plan' | 'review';
+  mode?: 'ask' | 'plan' | 'build' | 'review' | 'work';
   workflow?: { nodes?: WorkflowNode[]; active?: boolean; current_node?: number };
   picker_token?: string;
   multi_agent_enabled?: boolean;
@@ -186,9 +192,13 @@ export interface TaskStatus {
   done: boolean;
   preview: string;
   final: string;
+  acp_events?: any[];
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    cached_tokens?: number;
     prompt_cache_hit_tokens?: number;
     prompt_cache_miss_tokens?: number;
   } | null;

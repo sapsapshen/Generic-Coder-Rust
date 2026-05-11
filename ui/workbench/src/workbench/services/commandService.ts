@@ -35,7 +35,10 @@ export class CommandService {
 
     this.registerCommand({ id: 'workbench.action.quickOpen', label: 'Quick Open', run: () => workbench.setQuickOpenVisible(true) });
     this.registerCommand({ id: 'workbench.action.closeQuickOpen', label: 'Close Quick Open', run: () => workbench.setQuickOpenVisible(false) });
-    this.registerCommand({ id: 'workbench.action.newChat', label: 'New Chat', run: () => workbench.sendPrompt('/new') });
+    this.registerCommand({ id: 'workbench.action.newChat', label: 'New Chat', run: async () => {
+      if (workbench.state.isRunning) await workbench.stopTask();
+      void workbench.sendPrompt('/new');
+    }});
     this.registerCommand({ id: 'workbench.action.stop', label: 'Stop', run: () => workbench.stopTask() });
     this.registerCommand({ id: 'workbench.action.refresh', label: 'Refresh', run: () => workbench.refreshAll() });
     this.registerCommand({ id: 'workbench.action.toggleSidebar', label: 'Toggle Sidebar', run: () => workbench.toggleSidebar() });

@@ -1128,3 +1128,230 @@ a {
 }
 
 .field-help:hover { opacity: 1; }
+
+/* ── Tool blocks & ACP event blocks ───────────────────────── */
+.tool-block,
+.event-block {
+  margin: 0 0 8px;
+  border: 1px solid rgba(123, 200, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(14, 99, 156, 0.06);
+  overflow: hidden;
+}
+
+.tool-block__summary {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #7bc8ff;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  list-style: none;
+}
+
+.tool-block__summary::-webkit-details-marker { display: none; }
+
+.tool-block__content,
+.event-block__item {
+  padding: 8px 12px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: inherit;
+}
+
+.tool-block__content {
+  border-top: 1px solid rgba(123, 200, 255, 0.18);
+}
+
+.event-block {
+  display: grid;
+}
+
+.event-block__item + .event-block__item {
+  border-top: 1px solid rgba(123, 200, 255, 0.18);
+}
+
+/* ── Message body wrapper ──────────────────────────────────── */
+.message__body {
+  min-width: 0;
+}
+
+/* ── Message meta row (role + spinner + mode badge) ────────── */
+.message__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.message__meta .message__role {
+  margin-bottom: 0;
+}
+
+/* ── Streaming spinner ─────────────────────────────────────── */
+.message__spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(123, 200, 255, 0.25);
+  border-top-color: #7bc8ff;
+  border-radius: 50%;
+  animation: message-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes message-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Mode badges ───────────────────────────────────────────── */
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border: 1px solid;
+  opacity: 0.85;
+  background: transparent;
+}
+
+.mode-badge--ask {
+  color: #dcdcaa;
+  border-color: rgba(220, 220, 170, 0.35);
+  background: rgba(220, 220, 170, 0.07);
+}
+.mode-badge--plan {
+  color: #9cdcfe;
+  border-color: rgba(156, 220, 254, 0.35);
+  background: rgba(156, 220, 254, 0.07);
+}
+.mode-badge--build {
+  color: #4ec9b0;
+  border-color: rgba(78, 201, 176, 0.35);
+  background: rgba(78, 201, 176, 0.07);
+}
+.mode-badge--review {
+  color: #ce9178;
+  border-color: rgba(206, 145, 120, 0.35);
+  background: rgba(206, 145, 120, 0.07);
+}
+
+/* ── Avatar variants ───────────────────────────────────────── */
+.message__avatar--agent {
+  background: rgba(14, 99, 156, 0.22);
+  color: #7bc8ff;
+}
+
+.message__avatar--assistant {
+  background: rgba(78, 201, 176, 0.12);
+  color: #4ec9b0;
+}
+
+/* ── Streaming message highlight ───────────────────────────── */
+.message--streaming > .message__body > .message__content {
+  border-color: rgba(123, 200, 255, 0.35);
+}
+
+/* ── Compact agent-working indicator (logs off) ────────────── */
+.agent-working {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+}
+
+.agent-working__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7bc8ff;
+  opacity: 0.4;
+  animation: agent-dot-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.agent-working__dot:nth-child(2) { animation-delay: 0.2s; }
+.agent-working__dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes agent-dot-pulse {
+  0%, 100% { opacity: 0.2; transform: scale(0.85); }
+  50%       { opacity: 0.9; transform: scale(1.15); }
+}
+
+.agent-working__label {
+  font-size: 12px;
+  color: rgba(123, 200, 255, 0.65);
+  margin-left: 4px;
+  font-style: italic;
+}
+
+/* ── Streaming inline thinking dot ────────────────────────── */
+.thinking-block__streaming-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: rgba(255, 200, 50, 0.7);
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: middle;
+  animation: blink 1s step-end infinite;
+}
+
+/* ── Empty chat state ─────────────────────────────────────── */
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 40px 24px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.chat-empty__icon {
+  font-size: 36px;
+  color: var(--vscode-textLink-foreground, #4ec9b0);
+  opacity: 0.6;
+}
+
+.chat-empty__text {
+  font-size: 14px;
+  max-width: 340px;
+  line-height: 1.6;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.chat-empty__modes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.chat-empty__modes .mode-badge {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+/* ── Auto-detected mode select indicator ─────────────────── */
+.select-inline[data-auto-detected] {
+  border-color: rgba(100, 180, 255, 0.6) !important;
+  font-style: italic;
+}
+
+/* ── Agent-logs toggle class ──────────────────────────────── */
+.toggle-inline--agent-logs {
+  /* inherits toggle-inline styles */
+}

@@ -10,15 +10,21 @@ export class ComposerPart extends Disposable {
   private mentionSuggestions: Array<{ name: string; path: string; rel: string }> = [];
   private loopCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private slashSelectedIndex = 0;
+  private commandHistory: string[] = [];
+  private historyIndex = -1;
+  private historyDraft = '';
+  private autoDetectedMode: string | null = null;
+  private modeUserOverridden = false;
 
   private static readonly SLASH_COMMANDS = [
-    { cmd: '/new',       desc: 'Start a fresh session (clears context)' },
-    { cmd: '/fork',      desc: 'Fork the current session into a new branch' },
-    { cmd: '/continue',  desc: '/continue <n>  — restore and resume session #n' },
-    { cmd: '/plan',      desc: 'Switch to Plan mode (explore without modifying files)' },
-    { cmd: '/work',      desc: 'Switch to Work mode (implement and execute)' },
-    { cmd: '/review',    desc: 'Switch to Review mode (audit code for issues)' },
-    { cmd: '/clear',     desc: 'Clear error memory and avoidance hints' },
+    { cmd: '/new',      desc: 'Start a fresh session (clears context)' },
+    { cmd: '/fork',     desc: 'Fork the current session into a new branch' },
+    { cmd: '/continue', desc: '/continue <n>  — restore and resume session #n' },
+    { cmd: '/ask',      desc: 'Switch to Ask mode (Q&A and code explanation)' },
+    { cmd: '/plan',     desc: 'Switch to Plan mode (explore without modifying files)' },
+    { cmd: '/build',    desc: 'Switch to Build mode (implement and execute)' },
+    { cmd: '/review',   desc: 'Switch to Review mode (audit code for issues)' },
+    { cmd: '/clear',    desc: 'Clear error memory and avoidance hints' },
   ];
 
   private readonly layoutService: LayoutService;
@@ -31,8 +37,64 @@ export class ComposerPart extends Disposable {
     this.workbenchService = accessor.get(IWorkbenchService);
     this.commandService = accessor.get(ICommandService);
     this.bind();
+    try {
+      this.commandHistory = JSON.parse(window.localStorage.getItem('gc-cmd-history') || '[]');
+    } catch {
+      this.commandHistory = [];
+    }
     this._register(this.workbenchService.onDidChangeState(() => this.render()));
     this.render();
+  }
+
+  static detectMode(text: string): string | null {
+    const t = text.toLowerCase().trim();
+    if (!t) return null;
+    if (t.startsWith('/ask') || /\b(explain|what is|what does|how does|why does|understand|describe)\b/.test(t)) return 'ask';
+    if (t.startsWith('/review') || /\b(review|audit|check|inspect|analyse|analyze|security)\b/.test(t)) return 'review';
+    if (t.startsWith('/plan') || /\b(plan|design|architecture|outline|breakdown|roadmap)\b/.test(t)) return 'plan';
+    if (t.startsWith('/build') || /\b(implement|build|create|add|fix|refactor|write|generate|make)\b/.test(t)) return 'build';
+    return null;
+  }
+
+  private updateAutoDetectedMode(input: HTMLTextAreaElement): void {
+    if (this.modeUserOverridden) return;
+    const detected = ComposerPart.detectMode(input.value);
+    const modeSelect = this.layoutService.getElement<HTMLSelectElement>('mode-select');
+    if (detected && detected !== this.autoDetectedMode) {
+      this.autoDetectedMode = detected;
+      modeSelect.value = detected;
+      modeSelect.dataset.autoDetected = detected;
+      modeSelect.title = `Auto-detected: ${detected}`;
+    } else if (!detected && this.autoDetectedMode) {
+      this.autoDetectedMode = null;
+      delete modeSelect.dataset.autoDetected;
+      modeSelect.title = '';
+      modeSelect.value = this.workbenchService.state.currentMode;
+    }
+  }
+
+  private async handleSend(input: HTMLTextAreaElement): Promise<void> {
+    const value = input.value.trim();
+    if (!value) return;
+    // Save to history
+    if (this.commandHistory[0] !== value) {
+      this.commandHistory.unshift(value);
+      if (this.commandHistory.length > 100) this.commandHistory.pop();
+      try { window.localStorage.setItem('gc-cmd-history', JSON.stringify(this.commandHistory)); } catch {}
+    }
+    this.historyIndex = -1;
+    this.historyDraft = '';
+    // Apply auto-detected mode if not overridden and different from current
+    if (!this.modeUserOverridden && this.autoDetectedMode && this.autoDetectedMode !== this.workbenchService.state.currentMode) {
+      await this.workbenchService.setMode(this.autoDetectedMode as any);
+    }
+    // Reset auto-detection
+    this.autoDetectedMode = null;
+    this.modeUserOverridden = false;
+    const modeSelect = this.layoutService.getElement<HTMLSelectElement>('mode-select');
+    delete modeSelect.dataset.autoDetected;
+    modeSelect.title = '';
+    await this.workbenchService.sendPrompt(input.value);
   }
 
   private bind(): void {
@@ -58,6 +120,7 @@ export class ComposerPart extends Disposable {
     input.addEventListener('input', async () => {
       this.workbenchService.setInputValue(input.value);
       this.updateSlashHints(input);
+      this.updateAutoDetectedMode(input);
       await this.refreshMentionSuggestions();
       this.scheduleLoopCheck(input.value);
     });
@@ -94,11 +157,53 @@ export class ComposerPart extends Disposable {
         }
       }
 
+      // History navigation when not showing slash hints
+      if (slashHints.hidden) {
+        if (event.key === 'ArrowUp') {
+          const lines = input.value.split('\n');
+          const isFirstLine = input.selectionStart <= lines[0].length;
+          if (isFirstLine && this.commandHistory.length > 0) {
+            event.preventDefault();
+            if (this.historyIndex < 0) {
+              this.historyDraft = input.value;
+            }
+            this.historyIndex = Math.min(this.historyIndex + 1, this.commandHistory.length - 1);
+            input.value = this.commandHistory[this.historyIndex];
+            this.workbenchService.setInputValue(input.value);
+            return;
+          }
+        }
+        if (event.key === 'ArrowDown') {
+          if (this.historyIndex >= 0) {
+            const lines = input.value.split('\n');
+            const isLastLine = input.selectionStart >= input.value.length - lines[lines.length - 1].length;
+            if (isLastLine) {
+              event.preventDefault();
+              this.historyIndex--;
+              if (this.historyIndex < 0) {
+                input.value = this.historyDraft;
+              } else {
+                input.value = this.commandHistory[this.historyIndex];
+              }
+              this.workbenchService.setInputValue(input.value);
+              return;
+            }
+          }
+        }
+      }
+
+      if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        slashHints.hidden = true;
+        await this.handleSend(input);
+        return;
+      }
+
       const mod = event.metaKey || event.ctrlKey;
       if (mod && event.key.toLowerCase() === 'enter') {
         event.preventDefault();
         slashHints.hidden = true;
-        await this.workbenchService.sendPrompt(input.value);
+        await this.handleSend(input);
         return;
       }
       if (event.key === 'Tab' && this.mentionSuggestions[0] && input.value.includes('@')) {
@@ -133,9 +238,13 @@ export class ComposerPart extends Disposable {
     );
 
     sendButton.addEventListener('click', () => {
-      void this.workbenchService.sendPrompt(input.value);
+      void this.handleSend(input);
     });
     modeSelect.addEventListener('change', () => {
+      this.modeUserOverridden = true;
+      this.autoDetectedMode = null;
+      delete modeSelect.dataset.autoDetected;
+      modeSelect.title = '';
       void this.workbenchService.setMode(modeSelect.value as ModeId);
     });
     multiAgentToggle.addEventListener('change', () => {
@@ -145,7 +254,7 @@ export class ComposerPart extends Disposable {
       void this.workbenchService.toggleOneShot(oneShotToggle.checked);
     });
     agentLogsToggle.addEventListener('change', () => {
-      this.workbenchService.setShowAgentLogs(agentLogsToggle.checked);
+      this.workbenchService.setShowDetailedAgentLogs(agentLogsToggle.checked);
     });
     loopToggle.addEventListener('change', () => {
       void this.workbenchService.toggleLoop(loopToggle.checked);
@@ -194,7 +303,7 @@ export class ComposerPart extends Disposable {
     modeSelect.value = state.currentMode;
     multiAgentToggle.checked = state.multiAgentEnabled;
     oneShotToggle.checked = state.oneShotEnabled;
-    agentLogsToggle.checked = state.showAgentLogs;
+    agentLogsToggle.checked = state.showDetailedAgentLogs;
 
     loopToggle.disabled = !state.loopAvailable;
     loopToggle.checked = state.loopEnabled;
@@ -241,7 +350,9 @@ export class ComposerPart extends Disposable {
       btn.title = effort === 'off' ? 'Disable reasoning' : effort === 'high' ? 'High reasoning effort' : 'Maximum reasoning effort';
     });
 
-    sendButton.disabled = state.isRunning;
+    const canSend = !state.isRunning;
+    sendButton.disabled = !canSend;
+    input.disabled = state.isRunning;
     meta.textContent = state.isRunning
       ? 'Task running'
       : state.autoModelEnabled && state.autoRoute

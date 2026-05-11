@@ -160,12 +160,18 @@
     mentionSuggestions = [];
     loopCheckTimer = null;
     slashSelectedIndex = 0;
+    commandHistory = [];
+    historyIndex = -1;
+    historyDraft = "";
+    autoDetectedMode = null;
+    modeUserOverridden = false;
     static SLASH_COMMANDS = [
       { cmd: "/new", desc: "Start a fresh session (clears context)" },
       { cmd: "/fork", desc: "Fork the current session into a new branch" },
       { cmd: "/continue", desc: "/continue <n>  \u2014 restore and resume session #n" },
+      { cmd: "/ask", desc: "Switch to Ask mode (Q&A and code explanation)" },
       { cmd: "/plan", desc: "Switch to Plan mode (explore without modifying files)" },
-      { cmd: "/work", desc: "Switch to Work mode (implement and execute)" },
+      { cmd: "/build", desc: "Switch to Build mode (implement and execute)" },
       { cmd: "/review", desc: "Switch to Review mode (audit code for issues)" },
       { cmd: "/clear", desc: "Clear error memory and avoidance hints" }
     ];
@@ -178,8 +184,61 @@
       this.workbenchService = accessor.get(IWorkbenchService);
       this.commandService = accessor.get(ICommandService);
       this.bind();
+      try {
+        this.commandHistory = JSON.parse(window.localStorage.getItem("gc-cmd-history") || "[]");
+      } catch {
+        this.commandHistory = [];
+      }
       this._register(this.workbenchService.onDidChangeState(() => this.render()));
       this.render();
+    }
+    static detectMode(text) {
+      const t = text.toLowerCase().trim();
+      if (!t) return null;
+      if (t.startsWith("/ask") || /\b(explain|what is|what does|how does|why does|understand|describe)\b/.test(t)) return "ask";
+      if (t.startsWith("/review") || /\b(review|audit|check|inspect|analyse|analyze|security)\b/.test(t)) return "review";
+      if (t.startsWith("/plan") || /\b(plan|design|architecture|outline|breakdown|roadmap)\b/.test(t)) return "plan";
+      if (t.startsWith("/build") || /\b(implement|build|create|add|fix|refactor|write|generate|make)\b/.test(t)) return "build";
+      return null;
+    }
+    updateAutoDetectedMode(input) {
+      if (this.modeUserOverridden) return;
+      const detected = _ComposerPart.detectMode(input.value);
+      const modeSelect = this.layoutService.getElement("mode-select");
+      if (detected && detected !== this.autoDetectedMode) {
+        this.autoDetectedMode = detected;
+        modeSelect.value = detected;
+        modeSelect.dataset.autoDetected = detected;
+        modeSelect.title = `Auto-detected: ${detected}`;
+      } else if (!detected && this.autoDetectedMode) {
+        this.autoDetectedMode = null;
+        delete modeSelect.dataset.autoDetected;
+        modeSelect.title = "";
+        modeSelect.value = this.workbenchService.state.currentMode;
+      }
+    }
+    async handleSend(input) {
+      const value = input.value.trim();
+      if (!value) return;
+      if (this.commandHistory[0] !== value) {
+        this.commandHistory.unshift(value);
+        if (this.commandHistory.length > 100) this.commandHistory.pop();
+        try {
+          window.localStorage.setItem("gc-cmd-history", JSON.stringify(this.commandHistory));
+        } catch {
+        }
+      }
+      this.historyIndex = -1;
+      this.historyDraft = "";
+      if (!this.modeUserOverridden && this.autoDetectedMode && this.autoDetectedMode !== this.workbenchService.state.currentMode) {
+        await this.workbenchService.setMode(this.autoDetectedMode);
+      }
+      this.autoDetectedMode = null;
+      this.modeUserOverridden = false;
+      const modeSelect = this.layoutService.getElement("mode-select");
+      delete modeSelect.dataset.autoDetected;
+      modeSelect.title = "";
+      await this.workbenchService.sendPrompt(input.value);
     }
     bind() {
       const input = this.layoutService.getElement("prompt-input");
@@ -201,6 +260,7 @@
       input.addEventListener("input", async () => {
         this.workbenchService.setInputValue(input.value);
         this.updateSlashHints(input);
+        this.updateAutoDetectedMode(input);
         await this.refreshMentionSuggestions();
         this.scheduleLoopCheck(input.value);
       });
@@ -235,11 +295,50 @@
             return;
           }
         }
+        if (slashHints.hidden) {
+          if (event.key === "ArrowUp") {
+            const lines = input.value.split("\n");
+            const isFirstLine = input.selectionStart <= lines[0].length;
+            if (isFirstLine && this.commandHistory.length > 0) {
+              event.preventDefault();
+              if (this.historyIndex < 0) {
+                this.historyDraft = input.value;
+              }
+              this.historyIndex = Math.min(this.historyIndex + 1, this.commandHistory.length - 1);
+              input.value = this.commandHistory[this.historyIndex];
+              this.workbenchService.setInputValue(input.value);
+              return;
+            }
+          }
+          if (event.key === "ArrowDown") {
+            if (this.historyIndex >= 0) {
+              const lines = input.value.split("\n");
+              const isLastLine = input.selectionStart >= input.value.length - lines[lines.length - 1].length;
+              if (isLastLine) {
+                event.preventDefault();
+                this.historyIndex--;
+                if (this.historyIndex < 0) {
+                  input.value = this.historyDraft;
+                } else {
+                  input.value = this.commandHistory[this.historyIndex];
+                }
+                this.workbenchService.setInputValue(input.value);
+                return;
+              }
+            }
+          }
+        }
+        if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+          event.preventDefault();
+          slashHints.hidden = true;
+          await this.handleSend(input);
+          return;
+        }
         const mod = event.metaKey || event.ctrlKey;
         if (mod && event.key.toLowerCase() === "enter") {
           event.preventDefault();
           slashHints.hidden = true;
-          await this.workbenchService.sendPrompt(input.value);
+          await this.handleSend(input);
           return;
         }
         if (event.key === "Tab" && this.mentionSuggestions[0] && input.value.includes("@")) {
@@ -272,9 +371,13 @@
         })
       );
       sendButton.addEventListener("click", () => {
-        void this.workbenchService.sendPrompt(input.value);
+        void this.handleSend(input);
       });
       modeSelect.addEventListener("change", () => {
+        this.modeUserOverridden = true;
+        this.autoDetectedMode = null;
+        delete modeSelect.dataset.autoDetected;
+        modeSelect.title = "";
         void this.workbenchService.setMode(modeSelect.value);
       });
       multiAgentToggle.addEventListener("change", () => {
@@ -284,7 +387,7 @@
         void this.workbenchService.toggleOneShot(oneShotToggle.checked);
       });
       agentLogsToggle.addEventListener("change", () => {
-        this.workbenchService.setShowAgentLogs(agentLogsToggle.checked);
+        this.workbenchService.setShowDetailedAgentLogs(agentLogsToggle.checked);
       });
       loopToggle.addEventListener("change", () => {
         void this.workbenchService.toggleLoop(loopToggle.checked);
@@ -331,7 +434,7 @@
       modeSelect.value = state.currentMode;
       multiAgentToggle.checked = state.multiAgentEnabled;
       oneShotToggle.checked = state.oneShotEnabled;
-      agentLogsToggle.checked = state.showAgentLogs;
+      agentLogsToggle.checked = state.showDetailedAgentLogs;
       loopToggle.disabled = !state.loopAvailable;
       loopToggle.checked = state.loopEnabled;
       loopToggle.title = state.loopAvailable ? "Repeat this task in a loop" : "Loop not available for this task";
@@ -358,7 +461,9 @@
         btn.disabled = state.autoModelEnabled;
         btn.title = effort === "off" ? "Disable reasoning" : effort === "high" ? "High reasoning effort" : "Maximum reasoning effort";
       });
-      sendButton.disabled = state.isRunning;
+      const canSend = !state.isRunning;
+      sendButton.disabled = !canSend;
+      input.disabled = state.isRunning;
       meta.textContent = state.isRunning ? "Task running" : state.autoModelEnabled && state.autoRoute ? `Auto -> ${state.autoRoute.model}${state.autoRoute.reasoning_effort ? ` / ${state.autoRoute.reasoning_effort}` : ""}` : state.autoModelEnabled ? "Auto routing enabled" : "";
     }
     scheduleLoopCheck(prompt) {
@@ -490,7 +595,89 @@
   }
 
   // workbench/src/workbench/parts/editorPart.ts
-  function renderMessageContent(raw, showAgentLogs, streaming) {
+  var MODE_DISPLAY = {
+    ask: { icon: "comment-discussion", label: "Ask" },
+    plan: { icon: "list-ordered", label: "Plan" },
+    build: { icon: "tools", label: "Build" },
+    review: { icon: "eye", label: "Review" },
+    work: { icon: "tools", label: "Work" }
+  };
+  function parseToolBlock(rawBlock) {
+    try {
+      const obj = JSON.parse(rawBlock.trim());
+      const name = obj.name || obj.tool || "(tool)";
+      const input = obj.input || obj.arguments || obj.parameters || obj.params || {};
+      const args = typeof input === "string" ? input : JSON.stringify(input, null, 2);
+      return { name, args };
+    } catch {
+      return null;
+    }
+  }
+  function renderDetailEvents(detailEvents) {
+    if (!detailEvents || detailEvents.length === 0) return "";
+    const items = detailEvents.map((ev) => {
+      const type = ev.type || ev.event || "";
+      let emoji = "\u25B8";
+      let text = "";
+      if (type === "acp_plan" || type === "oneshot_plan") {
+        emoji = "\u{1F4CB}";
+        text = escapeHtml(ev.plan || ev.content || "Plan ready");
+      } else if (type === "acp_step_start") {
+        emoji = "\u25B6";
+        text = escapeHtml(ev.label || ev.step || `Step ${(ev.index ?? 0) + 1}`);
+      } else if (type === "acp_step_done" || type === "oneshot_done") {
+        emoji = "\u2705";
+        text = escapeHtml(ev.label || ev.summary || "Step done");
+      } else if (type === "acp_step_failed") {
+        emoji = "\u274C";
+        text = escapeHtml(ev.label || ev.error || "Step failed");
+      } else if (type === "acp_done") {
+        emoji = "\u{1F3C1}";
+        text = escapeHtml(ev.summary || "Done");
+      } else {
+        text = escapeHtml(type + (ev.label ? ": " + ev.label : ""));
+      }
+      return `<div class="event-block__item">${emoji} ${text}</div>`;
+    });
+    return `<div class="event-block">${items.join("")}</div>`;
+  }
+  function renderModeBadge(mode) {
+    if (!mode) return "";
+    const info = MODE_DISPLAY[mode];
+    if (!info) return "";
+    return `<span class="mode-badge mode-badge--${escapeHtml(mode)}"><i class="codicon codicon-${info.icon}"></i>${info.label}</span>`;
+  }
+  function renderAgentWorkingIndicator() {
+    return `<div class="agent-working"><div class="agent-working__dot"></div><div class="agent-working__dot"></div><div class="agent-working__dot"></div><span class="agent-working__label">Agent is working\u2026</span></div>`;
+  }
+  function renderMessageContent(message, showDetailedAgentLogs) {
+    const streaming = message.streaming;
+    const raw = message.content || "";
+    if (message.kind === "agent-log") {
+      if (!showDetailedAgentLogs) {
+        if (streaming) {
+          return renderAgentWorkingIndicator();
+        }
+        return "";
+      }
+      let html = "";
+      if (message.detail_events?.length) {
+        html += renderDetailEvents(message.detail_events);
+      }
+      const toolRe = /<(?:tool_use|tool_call)>([\s\S]*?)<\/(?:tool_use|tool_call)>/g;
+      let toolMatch;
+      while ((toolMatch = toolRe.exec(raw)) !== null) {
+        const parsed = parseToolBlock(toolMatch[1]);
+        if (parsed) {
+          html += `<details class="tool-block"><summary class="tool-block__summary"><i class="codicon codicon-tools"></i> ${escapeHtml(parsed.name)}</summary><pre class="tool-block__content">${escapeHtml(parsed.args)}</pre></details>`;
+        }
+      }
+      const stripped = raw.replace(/<(?:tool_use|tool_call)>[\s\S]*?(?:<\/(?:tool_use|tool_call)>|$)/g, "").replace(/<summary>[\s\S]*?(?:<\/summary>|$)/g, "").replace(/<\/?(?:summary|tool_use|tool_call)>/g, "").trim();
+      if (stripped) {
+        html += `<pre class="message__text${streaming ? " message__text--streaming" : ""}">${escapeHtml(stripped)}</pre>`;
+      }
+      return html || renderAgentWorkingIndicator();
+    }
     const sanitized = raw.replace(/<(?:tool_use|tool_call)>[\s\S]*?(?:<\/(?:tool_use|tool_call)>|$)/g, "").replace(/<summary>[\s\S]*?(?:<\/summary>|$)/g, "").replace(/<\/?(?:summary|tool_use|tool_call)>/g, "").trim();
     const thinkingRe = /<thinking>([\s\S]*?)<\/thinking>/g;
     const parts = [];
@@ -500,9 +687,10 @@
       if (m.index > last) {
         parts.push(`<pre class="message__text">${escapeHtml(sanitized.slice(last, m.index))}</pre>`);
       }
-      if (showAgentLogs) {
+      if (showDetailedAgentLogs) {
+        const isStreamingThinking = streaming && m.index + m[0].length >= sanitized.length;
         parts.push(
-          `<details class="thinking-block" open><summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Reasoning</summary><pre class="thinking-block__content">${escapeHtml(m[1].trim())}</pre></details>`
+          `<details class="thinking-block" open><summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Thinking${isStreamingThinking ? '<span class="thinking-block__streaming-dot"></span>' : ""}</summary><pre class="thinking-block__content">${escapeHtml(m[1].trim())}</pre></details>`
         );
       }
       last = m.index + m[0].length;
@@ -512,6 +700,47 @@
       parts.push(`<pre class="message__text${streaming ? " message__text--streaming" : ""}">${escapeHtml(tail)}</pre>`);
     }
     return parts.join("") || `<pre class="message__text${streaming ? " message__text--streaming" : ""}"></pre>`;
+  }
+  function buildMessageHtml(message, showDetailedAgentLogs) {
+    const isAgentLog = message.kind === "agent-log";
+    if (isAgentLog && !showDetailedAgentLogs && !message.streaming) {
+      return "";
+    }
+    const roleClass = isAgentLog ? "agent" : message.role === "user" ? "user" : "assistant";
+    const avatarIcon = isAgentLog ? "terminal" : message.role === "user" ? "account" : "sparkle";
+    const avatarClass = isAgentLog ? "message__avatar--agent" : message.role === "assistant" ? "message__avatar--assistant" : "";
+    const roleLabel = isAgentLog ? message.streaming ? "agent \xB7 working" : "agent log" : message.role;
+    const spinner = message.streaming ? '<span class="message__spinner"></span>' : "";
+    const modeBadge = !isAgentLog && message.mode ? renderModeBadge(message.mode) : "";
+    const contentHtml = renderMessageContent(message, showDetailedAgentLogs);
+    return `
+    <article class="message message--${escapeHtml(roleClass)}${message.streaming ? " message--streaming" : ""}">
+      <div class="message__avatar ${avatarClass}"><i class="codicon codicon-${avatarIcon}"></i></div>
+      <div class="message__body">
+        <div class="message__meta">
+          <span class="message__role">${escapeHtml(roleLabel)}</span>
+          ${spinner}
+          ${modeBadge}
+        </div>
+        <div class="message__content">${contentHtml}</div>
+      </div>
+    </article>`;
+  }
+  function buildChatFeedHtml(messages, showDetailedAgentLogs) {
+    if (messages.length === 0) {
+      return `
+      <div class="chat-empty">
+        <div class="chat-empty__icon"><i class="codicon codicon-sparkle"></i></div>
+        <div class="chat-empty__text">Start a conversation \u2014 describe a task or ask a question.</div>
+        <div class="chat-empty__modes">
+          ${renderModeBadge("ask")}
+          ${renderModeBadge("plan")}
+          ${renderModeBadge("build")}
+          ${renderModeBadge("review")}
+        </div>
+      </div>`;
+    }
+    return messages.map((m) => buildMessageHtml(m, showDetailedAgentLogs)).join("");
   }
   var EditorPart = class extends Disposable {
     editorInstance = null;
@@ -540,23 +769,7 @@
       const surface = this.layoutService.getElement("editor-surface");
       if (activeTab.kind === "chat") {
         this.disposeEditor();
-        surface.innerHTML = `
-        <div class="chat-feed" id="chat-feed">
-          ${this.workbenchService.state.messages.map(
-          (message) => `
-                <article class="message message--${escapeHtml(message.role)}">
-                  <div class="message__avatar"><i class="codicon codicon-${message.role === "user" ? "account" : "sparkle"}"></i></div>
-                  <div class="message__body">
-                    <div class="message__role">${escapeHtml(message.role)}</div>
-                    <div class="message__content">${renderMessageContent(message.content || "", this.workbenchService.state.showAgentLogs, message.streaming)}</div>
-                  </div>
-                </article>`
-        ).join("")}
-        </div>`;
-        const feed = surface.querySelector("#chat-feed");
-        if (feed) {
-          feed.scrollTop = feed.scrollHeight;
-        }
+        this.renderChat(surface);
         return;
       }
       if (activeTab.kind === "preview") {
@@ -584,6 +797,16 @@
       </div>
       <div class="preview-host" id="preview-host"></div>`;
       void this.renderTextEditor(activeTab.diff, "diff");
+    }
+    renderChat(surface) {
+      const state = this.workbenchService.state;
+      const feed = surface.querySelector("#chat-feed");
+      const wasAtBottom = feed ? feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 40 : true;
+      surface.innerHTML = `<div class="chat-feed" id="chat-feed">${buildChatFeedHtml(state.messages, state.showDetailedAgentLogs)}</div>`;
+      const newFeed = surface.querySelector("#chat-feed");
+      if (newFeed && wasAtBottom) {
+        newFeed.scrollTop = newFeed.scrollHeight;
+      }
     }
     renderTabs() {
       const tabs = this.layoutService.getElement("editor-tabs");
@@ -643,8 +866,9 @@
     }
     computeRenderKey(activeTab) {
       if (activeTab.kind === "chat") {
-        const lastMessage = this.workbenchService.state.messages[this.workbenchService.state.messages.length - 1];
-        return `chat:${this.workbenchService.state.activeTabId}:${this.workbenchService.state.showAgentLogs}:${this.workbenchService.state.messages.length}:${lastMessage?.content || ""}`;
+        const state = this.workbenchService.state;
+        const lastMessage = state.messages[state.messages.length - 1];
+        return `chat:${state.activeTabId}:${state.showDetailedAgentLogs}:${state.messages.length}:${lastMessage?.content || ""}:${lastMessage?.streaming}`;
       }
       if (activeTab.kind === "preview") {
         return `preview:${activeTab.path}:${activeTab.preview.kind}:${activeTab.preview.size}:${this.workbenchService.state.theme}`;
@@ -842,10 +1066,10 @@
       currentSessionCheckpoints: [],
       checkpointPanelSessionIndex: null,
       checkpointPanelEntries: [],
-      currentMode: "work",
+      currentMode: "build",
       multiAgentEnabled: false,
       oneShotEnabled: false,
-      showAgentLogs: true,
+      showDetailedAgentLogs: true,
       planRemaining: -1,
       quickOpenVisible: false,
       inputValue: ""
@@ -1004,7 +1228,8 @@
       </section>`;
     }
     bindChat(container) {
-      container.querySelector('[data-new-chat="1"]')?.addEventListener("click", () => {
+      container.querySelector('[data-new-chat="1"]')?.addEventListener("click", async () => {
+        if (this.workbenchService.state.isRunning) await this.workbenchService.stopTask();
         void this.workbenchService.sendPrompt("/new");
       });
       container.querySelectorAll("[data-inspect-session]").forEach((button) => {
@@ -1128,8 +1353,10 @@
       const active = state.workflowActive;
       const currentNode = state.workflowCurrentNode;
       const MODE_META = {
+        ask: { icon: "comment-discussion", label: "Ask", description: "Q&A and code explanation", color: "#dcdcaa" },
         work: { icon: "tools", label: "Work", description: "Implement & execute tasks", color: "#4ec9b0" },
         plan: { icon: "list-ordered", label: "Plan", description: "Explore & design without touching code", color: "#9cdcfe" },
+        build: { icon: "tools", label: "Build", description: "Implement & execute tasks", color: "#4ec9b0" },
         review: { icon: "eye", label: "Review", description: "Audit code for issues & suggest fixes", color: "#ce9178" }
       };
       const statusBanner = active ? `<div class="wf-status wf-status--active">
@@ -1151,8 +1378,9 @@
               </span>
               <div class="wf-node__meta">
                 <select class="wf-node__mode-select select-inline" data-node-mode="${i}">
-                  <option value="work"${node.mode === "work" ? " selected" : ""}>Work</option>
+                  <option value="ask"${node.mode === "ask" ? " selected" : ""}>Ask</option>
                   <option value="plan"${node.mode === "plan" ? " selected" : ""}>Plan</option>
+                  <option value="build"${node.mode === "build" || node.mode === "work" ? " selected" : ""}>Build</option>
                   <option value="review"${node.mode === "review" ? " selected" : ""}>Review</option>
                 </select>
                 <span class="wf-node__desc muted">${meta.description}</span>
@@ -1186,8 +1414,9 @@
         ${canAdd ? `
         <div class="wf-add-row">
           <span class="muted">Add step:</span>
-          <button class="wf-add-btn" data-wf-add="work"><i class="codicon codicon-tools"></i> Work</button>
+          <button class="wf-add-btn" data-wf-add="ask"><i class="codicon codicon-comment-discussion"></i> Ask</button>
           <button class="wf-add-btn" data-wf-add="plan"><i class="codicon codicon-list-ordered"></i> Plan</button>
+          <button class="wf-add-btn" data-wf-add="build"><i class="codicon codicon-tools"></i> Build</button>
           <button class="wf-add-btn" data-wf-add="review"><i class="codicon codicon-eye"></i> Review</button>
         </div>` : '<div class="muted wf-limit-note"><i class="codicon codicon-info"></i> Maximum 3 steps reached</div>'}
       </section>
@@ -1570,7 +1799,10 @@
       const openView = (view) => () => workbench.setActiveView(view);
       this.registerCommand({ id: "workbench.action.quickOpen", label: "Quick Open", run: () => workbench.setQuickOpenVisible(true) });
       this.registerCommand({ id: "workbench.action.closeQuickOpen", label: "Close Quick Open", run: () => workbench.setQuickOpenVisible(false) });
-      this.registerCommand({ id: "workbench.action.newChat", label: "New Chat", run: () => workbench.sendPrompt("/new") });
+      this.registerCommand({ id: "workbench.action.newChat", label: "New Chat", run: async () => {
+        if (workbench.state.isRunning) await workbench.stopTask();
+        void workbench.sendPrompt("/new");
+      } });
       this.registerCommand({ id: "workbench.action.stop", label: "Stop", run: () => workbench.stopTask() });
       this.registerCommand({ id: "workbench.action.refresh", label: "Refresh", run: () => workbench.refreshAll() });
       this.registerCommand({ id: "workbench.action.toggleSidebar", label: "Toggle Sidebar", run: () => workbench.toggleSidebar() });
@@ -1617,13 +1849,14 @@
             <section class="composer">
               <div class="composer__toolbar">
                 <select id="mode-select" class="select-inline">
-                  <option value="work">Work</option>
+                  <option value="ask">Ask</option>
                   <option value="plan">Plan</option>
+                  <option value="build">Build</option>
                   <option value="review">Review</option>
                 </select>
                 <label class="toggle-inline"><input type="checkbox" id="multi-agent-toggle" />Multi-Agent</label>
                 <label class="toggle-inline"><input type="checkbox" id="one-shot-toggle" />One Shot</label>
-                <label class="toggle-inline"><input type="checkbox" id="agent-logs-toggle" checked />Agent Logs</label>
+                <label class="toggle-inline toggle-inline--agent-logs"><input type="checkbox" id="agent-logs-toggle" checked />Agent Logs</label>
                 <label class="toggle-inline toggle-inline--loop"><input type="checkbox" id="loop-toggle" disabled />Loop</label>
                 <label class="toggle-inline toggle-inline--workflow"><input type="checkbox" id="workflow-follow-toggle" /><span id="workflow-follow-label">Workflow</span></label>
                 <label class="toggle-inline toggle-inline--computer-use"><input type="checkbox" id="computer-use-toggle" />Computer Use</label>
@@ -1656,7 +1889,7 @@
           <div class="statusbar__left">
             <span class="status-pill"><i class="codicon codicon-symbol-misc"></i><span id="status-model">Model offline</span></span>
             <span class="status-pill"><i class="codicon codicon-folder-opened"></i><span id="status-workspace">No workspace</span></span>
-            <span class="status-pill"><i class="codicon codicon-play-circle"></i><span id="status-mode">Work</span></span>
+            <span class="status-pill"><i class="codicon codicon-play-circle"></i><span id="status-mode">Build</span></span>
           </div>
           <div class="statusbar__right">
             <span class="status-pill" id="status-usage"></span>
@@ -2040,7 +2273,8 @@
     changeEmitter = this._register(new Emitter());
     onDidChangeState = this.changeEmitter.event;
     pollingTaskId = null;
-    static AGENT_LOGS_STORAGE_KEY = "generic-coder-show-agent-logs";
+    static AGENT_LOGS_STORAGE_KEY = "generic-coder-show-detailed-agent-logs";
+    static CONTROL_COMMANDS = /* @__PURE__ */ new Set(["/ask", "/plan", "/build", "/work", "/review", "/clear"]);
     notifications;
     constructor(accessor) {
       super();
@@ -2056,7 +2290,7 @@
       }
       const storedAgentLogs = window.localStorage.getItem(_WorkbenchService.AGENT_LOGS_STORAGE_KEY);
       if (storedAgentLogs !== null) {
-        this.stateValue.showAgentLogs = storedAgentLogs !== "false";
+        this.stateValue.showDetailedAgentLogs = storedAgentLogs !== "false";
       }
       this.applyTheme(false);
       await this.hydrateWorkspacePickerToken();
@@ -2066,29 +2300,49 @@
       }, 5e3);
       this._register(toDisposable(() => window.clearInterval(interval)));
     }
-    ensureTaskPlaceholder(preview) {
+    ensureTaskPlaceholder(preview, detailEvents = [], taskId) {
       const content = preview || "...";
+      const nextMessage = {
+        role: "agent-log",
+        kind: "agent-log",
+        content,
+        streaming: true,
+        task_id: taskId || void 0,
+        detail_events: detailEvents
+      };
+      if (taskId) {
+        const existingIndex = this.stateValue.messages.findIndex(
+          (m) => m.kind === "agent-log" && m.task_id === taskId
+        );
+        if (existingIndex >= 0) {
+          this.stateValue.messages[existingIndex] = nextMessage;
+          this.stateValue.taskPlaceholderIndex = existingIndex;
+          return;
+        }
+      }
       if (typeof this.stateValue.taskPlaceholderIndex === "number" && this.stateValue.messages[this.stateValue.taskPlaceholderIndex]) {
-        this.stateValue.messages[this.stateValue.taskPlaceholderIndex] = {
-          role: "assistant",
-          content,
-          streaming: true
-        };
+        this.stateValue.messages[this.stateValue.taskPlaceholderIndex] = nextMessage;
         return;
       }
       const lastIndex = this.stateValue.messages.length - 1;
       const lastMessage = this.stateValue.messages[lastIndex];
-      if (lastMessage?.role === "assistant" && lastMessage.streaming) {
-        this.stateValue.messages[lastIndex] = {
-          role: "assistant",
-          content,
-          streaming: true
-        };
+      if (lastMessage?.kind === "agent-log" && lastMessage.streaming) {
+        this.stateValue.messages[lastIndex] = nextMessage;
         this.stateValue.taskPlaceholderIndex = lastIndex;
         return;
       }
-      this.stateValue.messages.push({ role: "assistant", content, streaming: true });
+      this.stateValue.messages.push(nextMessage);
       this.stateValue.taskPlaceholderIndex = this.stateValue.messages.length - 1;
+    }
+    discardTaskPlaceholder() {
+      if (typeof this.stateValue.taskPlaceholderIndex !== "number") {
+        return;
+      }
+      const message = this.stateValue.messages[this.stateValue.taskPlaceholderIndex];
+      if (message?.kind === "agent-log") {
+        this.stateValue.messages.splice(this.stateValue.taskPlaceholderIndex, 1);
+      }
+      this.stateValue.taskPlaceholderIndex = null;
     }
     maybeResumePendingTask(data) {
       const pendingTaskId = data.pending_task?.task_id;
@@ -2096,7 +2350,11 @@
         return;
       }
       this.stateValue.pendingTaskId = pendingTaskId;
-      this.ensureTaskPlaceholder(data.pending_task?.preview || "Starting task...");
+      this.ensureTaskPlaceholder(
+        data.pending_task?.preview || "Starting task...",
+        data.pending_task?.acp_events || [],
+        pendingTaskId
+      );
       void this.pollTask(pendingTaskId);
     }
     setActiveView(view) {
@@ -2451,8 +2709,8 @@ ${preview.content || ""}`
       }
       this.emitChange();
     }
-    setShowAgentLogs(enabled) {
-      this.stateValue.showAgentLogs = enabled;
+    setShowDetailedAgentLogs(enabled) {
+      this.stateValue.showDetailedAgentLogs = enabled;
       window.localStorage.setItem(_WorkbenchService.AGENT_LOGS_STORAGE_KEY, String(enabled));
       this.emitChange();
     }
@@ -2559,7 +2817,15 @@ ${preview.content || ""}`
       if (this.stateValue.isRunning && !prompt.startsWith("/")) {
         return;
       }
-      this.stateValue.messages.push({ role: "user", content: prompt });
+      const isControlCommand = _WorkbenchService.CONTROL_COMMANDS.has(prompt);
+      if (!isControlCommand) {
+        this.stateValue.messages.push({
+          role: "user",
+          content: prompt,
+          mode: this.stateValue.currentMode,
+          timestamp: Date.now()
+        });
+      }
       this.ensureChatTab();
       this.stateValue.activeTabId = "chat";
       this.stateValue.inputValue = "";
@@ -2581,11 +2847,13 @@ ${preview.content || ""}`
           throw new Error(payload.error || "Task creation failed");
         }
         this.stateValue.pendingTaskId = payload.task_id;
-        this.stateValue.messages.push({ role: "assistant", content: "...", streaming: true });
-        this.stateValue.taskPlaceholderIndex = this.stateValue.messages.length - 1;
+        if (!prompt.startsWith("/")) {
+          this.ensureTaskPlaceholder("Starting task...", [], payload.task_id);
+        }
         this.emitChange();
         await this.pollTask(payload.task_id);
       } catch (error) {
+        this.discardTaskPlaceholder();
         this.stateValue.isRunning = false;
         this.emitChange();
         this.notifyError(error, "Failed to send prompt");
@@ -2769,14 +3037,18 @@ ${preview.content || ""}`
       this.stateValue.pendingTaskId = data.pending_task?.task_id || null;
       this.stateValue.taskPlaceholderIndex = null;
       if (data.is_running && data.pending_task?.task_id) {
-        this.ensureTaskPlaceholder(data.pending_task.preview || "Starting task...");
+        this.ensureTaskPlaceholder(
+          data.pending_task.preview || "Starting task...",
+          data.pending_task.acp_events || [],
+          data.pending_task.task_id
+        );
       }
       this.applyModelSettings(data);
       this.stateValue.providerProfiles = data.provider_profiles || this.stateValue.providerProfiles;
       this.stateValue.workspace = data.workspace || this.stateValue.workspace;
       this.syncWorkspaceDraftFromActive();
       this.stateValue.remote = data.remote || this.stateValue.remote;
-      this.stateValue.currentMode = data.mode || "work";
+      this.stateValue.currentMode = data.mode || "build";
       this.stateValue.workflowNodes = data.workflow?.nodes || [];
       this.stateValue.workflowActive = Boolean(data.workflow?.active);
       this.stateValue.workflowCurrentNode = data.workflow?.current_node || 0;
@@ -2886,25 +3158,32 @@ ${preview.content || ""}`
       try {
         while (true) {
           const payload = await this.api.task(taskId);
-          if (typeof this.stateValue.taskPlaceholderIndex === "number") {
+          this.ensureTaskPlaceholder(payload.preview || "...", payload.acp_events || [], taskId);
+          if (payload.done && typeof this.stateValue.taskPlaceholderIndex === "number") {
             this.stateValue.messages[this.stateValue.taskPlaceholderIndex] = {
-              role: "assistant",
-              content: payload.done ? payload.final || payload.preview || "Done" : payload.preview || "...",
-              streaming: !payload.done
+              ...this.stateValue.messages[this.stateValue.taskPlaceholderIndex],
+              role: "agent-log",
+              kind: "agent-log",
+              content: payload.final || payload.preview || "Done",
+              streaming: false,
+              task_id: taskId,
+              detail_events: payload.acp_events || []
             };
           }
           this.emitChange();
           if (payload.done) {
-            if (payload.usage && typeof payload.usage.prompt_tokens === "number") {
+            const promptTokens = payload.usage?.prompt_tokens ?? payload.usage?.input_tokens;
+            const completionTokens = payload.usage?.completion_tokens ?? payload.usage?.output_tokens;
+            if (typeof promptTokens === "number" || typeof completionTokens === "number") {
               this.stateValue.lastUsage = {
-                prompt_tokens: payload.usage.prompt_tokens || 0,
-                completion_tokens: payload.usage.completion_tokens || 0,
-                cached_tokens: payload.usage.prompt_cache_hit_tokens ?? 0
+                prompt_tokens: promptTokens || 0,
+                completion_tokens: completionTokens || 0,
+                cached_tokens: payload.usage?.prompt_cache_hit_tokens ?? payload.usage?.cached_tokens ?? 0
               };
             }
             break;
           }
-          await new Promise((resolve) => window.setTimeout(resolve, 700));
+          await new Promise((resolve) => window.setTimeout(resolve, 300));
         }
         this.stateValue.pendingTaskId = null;
         this.stateValue.taskPlaceholderIndex = null;
