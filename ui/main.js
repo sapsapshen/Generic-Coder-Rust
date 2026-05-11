@@ -260,7 +260,7 @@ function ensureProjectDir(projectDir) {
     const bundledFrontendDir = path.join(bundledAssetsDir, 'generic_coder');
     const targetFrontendDir = path.join(targetAssetsDir, 'generic_coder');
     syncBundledFrontend(bundledFrontendDir, targetFrontendDir);
-    copyDirSync(bundledAssetsDir, targetAssetsDir);
+    copyDirSync(bundledAssetsDir, targetAssetsDir, { overwrite: true });
     console.log('  assets synced');
   } else {
     console.log('  no bundled assets found at:', bundledAssetsDir);

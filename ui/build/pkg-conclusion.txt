@@ -1,0 +1,3 @@
+Generic Coder was installed successfully.
+
+Open Generic Coder from /Applications. On first launch, the desktop shell starts the bundled local backend and loads the packaged Workbench UI.

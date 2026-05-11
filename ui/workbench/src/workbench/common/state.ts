@@ -97,6 +97,7 @@ export interface WorkbenchState {
   currentMode: ModeId;
   multiAgentEnabled: boolean;
   oneShotEnabled: boolean;
+  showAgentLogs: boolean;
   planRemaining: number;
   quickOpenVisible: boolean;
   inputValue: string;
@@ -149,6 +150,7 @@ export function createInitialWorkbenchState(): WorkbenchState {
     currentMode: 'work',
     multiAgentEnabled: false,
     oneShotEnabled: false,
+    showAgentLogs: true,
     planRemaining: -1,
     quickOpenVisible: false,
     inputValue: '',

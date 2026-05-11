@@ -37,6 +37,7 @@ export class LayoutService {
                 </select>
                 <label class="toggle-inline"><input type="checkbox" id="multi-agent-toggle" />Multi-Agent</label>
                 <label class="toggle-inline"><input type="checkbox" id="one-shot-toggle" />One Shot</label>
+                <label class="toggle-inline"><input type="checkbox" id="agent-logs-toggle" checked />Agent Logs</label>
                 <label class="toggle-inline toggle-inline--loop"><input type="checkbox" id="loop-toggle" disabled />Loop</label>
                 <label class="toggle-inline toggle-inline--workflow"><input type="checkbox" id="workflow-follow-toggle" /><span id="workflow-follow-label">Workflow</span></label>
                 <label class="toggle-inline toggle-inline--computer-use"><input type="checkbox" id="computer-use-toggle" />Computer Use</label>

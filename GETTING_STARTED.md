@@ -68,6 +68,16 @@ start-generic-coder.bat
 
 > ⏱️ **首次启动提示**：`cargo build --release` 会编译全部依赖，耗时 **2–5 分钟** 属于正常现象，之后每次启动无需重新编译。
 
+### macOS / Linux 一键启动
+
+在项目根目录执行：
+
+```bash
+bash start-generic-coder.sh
+```
+
+> 启动脚本现在会和 Windows 版本保持一致：自动安装 Electron 依赖、构建 Workbench 前端，并在可用时编译 Rust 后端；如果本机没有 `cargo`，也会优先复用已构建好的后端二进制。
+
 ### 手动启动
 
 ```bash
@@ -140,4 +150,3 @@ Error: Address already in use (os error 10048)
 - **主配置**：`~/.genericagent/ui_llm_config.json`（通过 UI 保存时自动生成）
 - **兼容旧配置**：项目根目录 `mykey.json`（手动编辑）
 - **会话记忆**：`memory/` 目录（自动管理，无需手动修改）
-

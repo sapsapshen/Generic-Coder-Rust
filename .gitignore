@@ -11,6 +11,10 @@ __pycache__/
 venv/
 env/
 build/
+!ui/build/
+!ui/build/entitlements.mac.plist
+!ui/build/pkg-welcome.txt
+!ui/build/pkg-conclusion.txt
 dist/
 *.egg-info/
 
@@ -112,4 +116,3 @@ reflect/*
 # Session/planning artifacts
 .planning/
 .playwright-mcp/
-

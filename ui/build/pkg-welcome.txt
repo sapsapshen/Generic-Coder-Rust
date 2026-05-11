@@ -1,0 +1,3 @@
+Welcome to Generic Coder.
+
+This installer places the Generic Coder desktop application in /Applications and bundles the local Rust backend, Workbench UI assets, provider profiles, and built-in skills.

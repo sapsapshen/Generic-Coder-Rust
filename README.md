@@ -289,6 +289,8 @@ Latest round of UI and interaction refinements:
 - **macOS 一键启动：** `bash start-generic-coder.sh`
 - **命令行启动：** `cargo run -- serve --host 127.0.0.1 --port 8765`
 
+macOS 启动链路现已补齐到与 Windows 一致：会先自动安装 Electron 依赖、构建 Workbench 前端，再启动桌面壳；若本机没有 `cargo`，会优先复用已构建好的后端二进制。
+
 服务默认运行在：
 
 ```text
@@ -463,6 +465,8 @@ cd Generic-Coder-Rust
 ```bash
 bash start-generic-coder.sh
 ```
+
+The macOS/Linux launcher now mirrors the Windows startup flow: it installs Electron dependencies when needed, rebuilds the workbench before launch, and falls back to a prebuilt backend binary when Cargo is unavailable.
 
 **Manual**
 
@@ -653,6 +657,8 @@ cd Generic-Coder-Rust
 ```bash
 bash start-generic-coder.sh
 ```
+
+El iniciador de macOS/Linux ahora sigue el mismo flujo que Windows: instala las dependencias de Electron cuando hace falta, recompila el workbench antes de abrir y reutiliza un binario backend ya compilado si Cargo no está disponible.
 
 **Manual**
 

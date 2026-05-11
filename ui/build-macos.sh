@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 UI_DIR="$SCRIPT_DIR"
 ASSETS_DIR="$UI_DIR/assets"
+BIN_DIR="$UI_DIR/bin"
 
 echo "========================================"
 echo " Generic Coder — macOS PKG Builder"
@@ -14,6 +15,38 @@ echo ""
 # ── Check prerequisites ─────────────────────────────────────────
 command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js not found. Install from https://nodejs.org"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "ERROR: npm not found."; exit 1; }
+command -v cargo >/dev/null 2>&1 || { echo "ERROR: Cargo not found. Install Rust from https://rustup.rs"; exit 1; }
+
+ensure_rust_target() {
+  local target="$1"
+  if rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+    return
+  fi
+  if command -v rustup >/dev/null 2>&1; then
+    echo "Installing Rust target: $target"
+    rustup target add "$target"
+  else
+    echo "ERROR: Rust target $target is not installed and rustup was not found."
+    exit 1
+  fi
+}
+
+stage_backend_for_arch() {
+  local arch="$1"
+  local target="$2"
+
+  echo "Building Rust backend for macOS $arch ($target)..."
+  ensure_rust_target "$target"
+  cd "$PROJECT_DIR"
+  cargo build --release --target "$target" 2>&1
+
+  mkdir -p "$BIN_DIR"
+  cp "$PROJECT_DIR/target/$target/release/generic-coder" "$BIN_DIR/generic-coder-backend"
+  chmod +x "$BIN_DIR/generic-coder-backend"
+
+  echo "  → Backend staged for $arch:"
+  file "$BIN_DIR/generic-coder-backend"
+}
 
 # ── Generate icons from SVG ─────────────────────────────────────
 echo "Generating app icon..."
@@ -90,17 +123,6 @@ fi
 
 echo ""
 
-# ── Rebuild Rust backend ────────────────────────────────────────
-echo "Building Rust backend..."
-cd "$PROJECT_DIR"
-cargo build --release 2>&1
-echo "  → Backend built"
-
-# Copy binary into electron-builder's reach
-mkdir -p "$UI_DIR/bin"
-cp target/release/generic-coder "$UI_DIR/bin/generic-coder-backend" 2>/dev/null || true
-echo "  → Backend binary staged at ui/bin/"
-
 # Copy backend assets into ui/assets/ for bundling
 echo "  Copying backend assets..."
 mkdir -p "$UI_DIR/assets"
@@ -135,8 +157,12 @@ rm -f "$UI_DIR"/dist/*.yml 2>/dev/null || true
 rm -f "$UI_DIR"/dist/*.yaml 2>/dev/null || true
 
 echo "  Building x64 PKG..."
+stage_backend_for_arch "x64" "x86_64-apple-darwin"
+cd "$UI_DIR"
 npm run build:macos:x64 2>&1
 echo "  Building arm64 PKG..."
+stage_backend_for_arch "arm64" "aarch64-apple-darwin"
+cd "$UI_DIR"
 npm run build:macos:arm64 2>&1
 
 [ -f "$X64_INSTALLER" ] || { echo "ERROR: Missing x64 installer: $X64_INSTALLER"; exit 1; }

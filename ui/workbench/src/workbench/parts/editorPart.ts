@@ -8,7 +8,7 @@ import { ILayoutService, IWorkbenchService } from '../services/serviceIds';
 import { WorkbenchService } from '../services/workbenchService';
 
 /** Parse message content splitting out <thinking>...</thinking> blocks. */
-function renderMessageContent(raw: string, streaming?: boolean): string {
+function renderMessageContent(raw: string, showAgentLogs: boolean, streaming?: boolean): string {
   const sanitized = raw
     .replace(/<(?:tool_use|tool_call)>[\s\S]*?(?:<\/(?:tool_use|tool_call)>|$)/g, '')
     .replace(/<summary>[\s\S]*?(?:<\/summary>|$)/g, '')
@@ -22,12 +22,14 @@ function renderMessageContent(raw: string, streaming?: boolean): string {
     if (m.index > last) {
       parts.push(`<pre class="message__text">${escapeHtml(sanitized.slice(last, m.index))}</pre>`);
     }
-    parts.push(
-      `<details class="thinking-block" open>` +
-      `<summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Reasoning</summary>` +
-      `<pre class="thinking-block__content">${escapeHtml(m[1].trim())}</pre>` +
-      `</details>`,
-    );
+    if (showAgentLogs) {
+      parts.push(
+        `<details class="thinking-block" open>` +
+        `<summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Reasoning</summary>` +
+        `<pre class="thinking-block__content">${escapeHtml(m[1].trim())}</pre>` +
+        `</details>`,
+      );
+    }
     last = m.index + m[0].length;
   }
   const tail = sanitized.slice(last);
@@ -76,7 +78,7 @@ export class EditorPart extends Disposable {
                   <div class="message__avatar"><i class="codicon codicon-${message.role === 'user' ? 'account' : 'sparkle'}"></i></div>
                   <div class="message__body">
                     <div class="message__role">${escapeHtml(message.role)}</div>
-                    <div class="message__content">${renderMessageContent(message.content || '', message.streaming)}</div>
+                    <div class="message__content">${renderMessageContent(message.content || '', this.workbenchService.state.showAgentLogs, message.streaming)}</div>
                   </div>
                 </article>`,
             )
@@ -181,7 +183,7 @@ export class EditorPart extends Disposable {
   private computeRenderKey(activeTab: EditorTab): string {
     if (activeTab.kind === 'chat') {
       const lastMessage = this.workbenchService.state.messages[this.workbenchService.state.messages.length - 1];
-      return `chat:${this.workbenchService.state.activeTabId}:${this.workbenchService.state.messages.length}:${lastMessage?.content || ''}`;
+      return `chat:${this.workbenchService.state.activeTabId}:${this.workbenchService.state.showAgentLogs}:${this.workbenchService.state.messages.length}:${lastMessage?.content || ''}`;
     }
     if (activeTab.kind === 'preview') {
       return `preview:${activeTab.path}:${activeTab.preview.kind}:${activeTab.preview.size}:${this.workbenchService.state.theme}`;

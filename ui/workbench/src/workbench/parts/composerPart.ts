@@ -41,6 +41,7 @@ export class ComposerPart extends Disposable {
     const modeSelect = this.layoutService.getElement<HTMLSelectElement>('mode-select');
     const multiAgentToggle = this.layoutService.getElement<HTMLInputElement>('multi-agent-toggle');
     const oneShotToggle = this.layoutService.getElement<HTMLInputElement>('one-shot-toggle');
+    const agentLogsToggle = this.layoutService.getElement<HTMLInputElement>('agent-logs-toggle');
     const loopToggle = this.layoutService.getElement<HTMLInputElement>('loop-toggle');
     const workflowFollowToggle = this.layoutService.getElement<HTMLInputElement>('workflow-follow-toggle');
     const computerUseToggle = this.layoutService.getElement<HTMLInputElement>('computer-use-toggle');
@@ -143,6 +144,9 @@ export class ComposerPart extends Disposable {
     oneShotToggle.addEventListener('change', () => {
       void this.workbenchService.toggleOneShot(oneShotToggle.checked);
     });
+    agentLogsToggle.addEventListener('change', () => {
+      this.workbenchService.setShowAgentLogs(agentLogsToggle.checked);
+    });
     loopToggle.addEventListener('change', () => {
       void this.workbenchService.toggleLoop(loopToggle.checked);
     });
@@ -173,6 +177,7 @@ export class ComposerPart extends Disposable {
     const modeSelect = this.layoutService.getElement<HTMLSelectElement>('mode-select');
     const multiAgentToggle = this.layoutService.getElement<HTMLInputElement>('multi-agent-toggle');
     const oneShotToggle = this.layoutService.getElement<HTMLInputElement>('one-shot-toggle');
+    const agentLogsToggle = this.layoutService.getElement<HTMLInputElement>('agent-logs-toggle');
     const loopToggle = this.layoutService.getElement<HTMLInputElement>('loop-toggle');
     const workflowFollowToggle = this.layoutService.getElement<HTMLInputElement>('workflow-follow-toggle');
     const workflowFollowLabel = this.layoutService.getElement<HTMLSpanElement>('workflow-follow-label');
@@ -189,6 +194,7 @@ export class ComposerPart extends Disposable {
     modeSelect.value = state.currentMode;
     multiAgentToggle.checked = state.multiAgentEnabled;
     oneShotToggle.checked = state.oneShotEnabled;
+    agentLogsToggle.checked = state.showAgentLogs;
 
     loopToggle.disabled = !state.loopAvailable;
     loopToggle.checked = state.loopEnabled;

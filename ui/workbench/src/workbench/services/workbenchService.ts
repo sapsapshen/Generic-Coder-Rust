@@ -23,6 +23,7 @@ export class WorkbenchService extends Disposable {
   private readonly changeEmitter = this._register(new Emitter<Readonly<WorkbenchState>>());
   readonly onDidChangeState = this.changeEmitter.event;
   private pollingTaskId: string | null = null;
+  private static readonly AGENT_LOGS_STORAGE_KEY = 'generic-coder-show-agent-logs';
 
   private readonly notifications: NotificationService;
 
@@ -39,6 +40,10 @@ export class WorkbenchService extends Disposable {
     const storedTheme = window.localStorage.getItem('generic-coder-theme');
     if (storedTheme && THEME_OPTIONS.includes(storedTheme as (typeof THEME_OPTIONS)[number])) {
       this.stateValue.theme = storedTheme;
+    }
+    const storedAgentLogs = window.localStorage.getItem(WorkbenchService.AGENT_LOGS_STORAGE_KEY);
+    if (storedAgentLogs !== null) {
+      this.stateValue.showAgentLogs = storedAgentLogs !== 'false';
     }
     this.applyTheme(false);
     await this.hydrateWorkspacePickerToken();
@@ -483,6 +488,12 @@ export class WorkbenchService extends Disposable {
       await this.api.setReasoningEffort(effort);
       this.stateValue.reasoningEffort = effort;
     } catch { /* keep current */ }
+    this.emitChange();
+  }
+
+  setShowAgentLogs(enabled: boolean): void {
+    this.stateValue.showAgentLogs = enabled;
+    window.localStorage.setItem(WorkbenchService.AGENT_LOGS_STORAGE_KEY, String(enabled));
     this.emitChange();
   }
 

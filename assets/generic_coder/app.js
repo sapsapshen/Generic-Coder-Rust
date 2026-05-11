@@ -187,6 +187,7 @@
       const modeSelect = this.layoutService.getElement("mode-select");
       const multiAgentToggle = this.layoutService.getElement("multi-agent-toggle");
       const oneShotToggle = this.layoutService.getElement("one-shot-toggle");
+      const agentLogsToggle = this.layoutService.getElement("agent-logs-toggle");
       const loopToggle = this.layoutService.getElement("loop-toggle");
       const workflowFollowToggle = this.layoutService.getElement("workflow-follow-toggle");
       const computerUseToggle = this.layoutService.getElement("computer-use-toggle");
@@ -282,6 +283,9 @@
       oneShotToggle.addEventListener("change", () => {
         void this.workbenchService.toggleOneShot(oneShotToggle.checked);
       });
+      agentLogsToggle.addEventListener("change", () => {
+        this.workbenchService.setShowAgentLogs(agentLogsToggle.checked);
+      });
       loopToggle.addEventListener("change", () => {
         void this.workbenchService.toggleLoop(loopToggle.checked);
       });
@@ -311,6 +315,7 @@
       const modeSelect = this.layoutService.getElement("mode-select");
       const multiAgentToggle = this.layoutService.getElement("multi-agent-toggle");
       const oneShotToggle = this.layoutService.getElement("one-shot-toggle");
+      const agentLogsToggle = this.layoutService.getElement("agent-logs-toggle");
       const loopToggle = this.layoutService.getElement("loop-toggle");
       const workflowFollowToggle = this.layoutService.getElement("workflow-follow-toggle");
       const workflowFollowLabel = this.layoutService.getElement("workflow-follow-label");
@@ -326,6 +331,7 @@
       modeSelect.value = state.currentMode;
       multiAgentToggle.checked = state.multiAgentEnabled;
       oneShotToggle.checked = state.oneShotEnabled;
+      agentLogsToggle.checked = state.showAgentLogs;
       loopToggle.disabled = !state.loopAvailable;
       loopToggle.checked = state.loopEnabled;
       loopToggle.title = state.loopAvailable ? "Repeat this task in a loop" : "Loop not available for this task";
@@ -484,7 +490,7 @@
   }
 
   // workbench/src/workbench/parts/editorPart.ts
-  function renderMessageContent(raw, streaming) {
+  function renderMessageContent(raw, showAgentLogs, streaming) {
     const sanitized = raw.replace(/<(?:tool_use|tool_call)>[\s\S]*?(?:<\/(?:tool_use|tool_call)>|$)/g, "").replace(/<summary>[\s\S]*?(?:<\/summary>|$)/g, "").replace(/<\/?(?:summary|tool_use|tool_call)>/g, "").trim();
     const thinkingRe = /<thinking>([\s\S]*?)<\/thinking>/g;
     const parts = [];
@@ -494,9 +500,11 @@
       if (m.index > last) {
         parts.push(`<pre class="message__text">${escapeHtml(sanitized.slice(last, m.index))}</pre>`);
       }
-      parts.push(
-        `<details class="thinking-block" open><summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Reasoning</summary><pre class="thinking-block__content">${escapeHtml(m[1].trim())}</pre></details>`
-      );
+      if (showAgentLogs) {
+        parts.push(
+          `<details class="thinking-block" open><summary class="thinking-block__summary"><i class="codicon codicon-lightbulb"></i> Reasoning</summary><pre class="thinking-block__content">${escapeHtml(m[1].trim())}</pre></details>`
+        );
+      }
       last = m.index + m[0].length;
     }
     const tail = sanitized.slice(last);
@@ -540,7 +548,7 @@
                   <div class="message__avatar"><i class="codicon codicon-${message.role === "user" ? "account" : "sparkle"}"></i></div>
                   <div class="message__body">
                     <div class="message__role">${escapeHtml(message.role)}</div>
-                    <div class="message__content">${renderMessageContent(message.content || "", message.streaming)}</div>
+                    <div class="message__content">${renderMessageContent(message.content || "", this.workbenchService.state.showAgentLogs, message.streaming)}</div>
                   </div>
                 </article>`
         ).join("")}
@@ -636,7 +644,7 @@
     computeRenderKey(activeTab) {
       if (activeTab.kind === "chat") {
         const lastMessage = this.workbenchService.state.messages[this.workbenchService.state.messages.length - 1];
-        return `chat:${this.workbenchService.state.activeTabId}:${this.workbenchService.state.messages.length}:${lastMessage?.content || ""}`;
+        return `chat:${this.workbenchService.state.activeTabId}:${this.workbenchService.state.showAgentLogs}:${this.workbenchService.state.messages.length}:${lastMessage?.content || ""}`;
       }
       if (activeTab.kind === "preview") {
         return `preview:${activeTab.path}:${activeTab.preview.kind}:${activeTab.preview.size}:${this.workbenchService.state.theme}`;
@@ -837,6 +845,7 @@
       currentMode: "work",
       multiAgentEnabled: false,
       oneShotEnabled: false,
+      showAgentLogs: true,
       planRemaining: -1,
       quickOpenVisible: false,
       inputValue: ""
@@ -1614,6 +1623,7 @@
                 </select>
                 <label class="toggle-inline"><input type="checkbox" id="multi-agent-toggle" />Multi-Agent</label>
                 <label class="toggle-inline"><input type="checkbox" id="one-shot-toggle" />One Shot</label>
+                <label class="toggle-inline"><input type="checkbox" id="agent-logs-toggle" checked />Agent Logs</label>
                 <label class="toggle-inline toggle-inline--loop"><input type="checkbox" id="loop-toggle" disabled />Loop</label>
                 <label class="toggle-inline toggle-inline--workflow"><input type="checkbox" id="workflow-follow-toggle" /><span id="workflow-follow-label">Workflow</span></label>
                 <label class="toggle-inline toggle-inline--computer-use"><input type="checkbox" id="computer-use-toggle" />Computer Use</label>
@@ -2024,12 +2034,13 @@
   };
 
   // workbench/src/workbench/services/workbenchService.ts
-  var WorkbenchService = class extends Disposable {
+  var WorkbenchService = class _WorkbenchService extends Disposable {
     api = new ApiClient();
     stateValue = createInitialWorkbenchState();
     changeEmitter = this._register(new Emitter());
     onDidChangeState = this.changeEmitter.event;
     pollingTaskId = null;
+    static AGENT_LOGS_STORAGE_KEY = "generic-coder-show-agent-logs";
     notifications;
     constructor(accessor) {
       super();
@@ -2042,6 +2053,10 @@
       const storedTheme = window.localStorage.getItem("generic-coder-theme");
       if (storedTheme && THEME_OPTIONS.includes(storedTheme)) {
         this.stateValue.theme = storedTheme;
+      }
+      const storedAgentLogs = window.localStorage.getItem(_WorkbenchService.AGENT_LOGS_STORAGE_KEY);
+      if (storedAgentLogs !== null) {
+        this.stateValue.showAgentLogs = storedAgentLogs !== "false";
       }
       this.applyTheme(false);
       await this.hydrateWorkspacePickerToken();
@@ -2434,6 +2449,11 @@ ${preview.content || ""}`
         this.stateValue.reasoningEffort = effort;
       } catch {
       }
+      this.emitChange();
+    }
+    setShowAgentLogs(enabled) {
+      this.stateValue.showAgentLogs = enabled;
+      window.localStorage.setItem(_WorkbenchService.AGENT_LOGS_STORAGE_KEY, String(enabled));
       this.emitChange();
     }
     async toggleLoop(enabled) {
