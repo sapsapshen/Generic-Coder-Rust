@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+set "ENABLE_NATIVE_SSH2=0"
+if /i "%~1"=="--native-ssh2" set "ENABLE_NATIVE_SSH2=1"
+
 set "SCRIPT_DIR=%~dp0"
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 for %%i in ("%SCRIPT_DIR%\..") do set "PROJECT_DIR=%%~fi"
@@ -13,6 +16,11 @@ echo ========================================
 echo.
 echo  Project dir : %PROJECT_DIR%
 echo  UI dir      : %UI_DIR%
+if "%ENABLE_NATIVE_SSH2%"=="1" (
+    echo  SSH2 mode   : native-ssh2 ^(requires Perl/OpenSSL build toolchain^)
+) else (
+    echo  SSH2 mode   : default ^(no native-ssh2 feature^)
+)
 echo.
 
 REM -- 0. Cleanup stale build processes ----------------------------------
@@ -41,6 +49,28 @@ where npm >nul 2>&1 || (
     exit /b 1
 )
 for /f "tokens=*" %%v in ('npm -v') do echo   npm     : %%v
+
+if "%ENABLE_NATIVE_SSH2%"=="1" (
+    where perl >nul 2>&1 || (
+        echo   ERROR: Perl not found, but --native-ssh2 was requested.
+        echo.
+        echo   The native-ssh2 feature pulls openssl-sys, which runs "perl ./Configure".
+        echo   Install Perl, then re-run this script:
+        echo     winget install StrawberryPerl.StrawberryPerl
+        echo.
+        echo   Alternatives:
+        echo     choco install strawberryperl
+        echo     scoop install perl
+        pause
+        exit /b 1
+    )
+    for /f "tokens=*" %%v in ('perl -v ^| findstr /r /c:"^This is perl"') do echo   Perl    : %%v
+) else (
+    where perl >nul 2>&1 || (
+        echo   INFO: Perl not found. This is fine for default build.
+        echo         If you need native SSH2 later, run this script with --native-ssh2 after installing Perl.
+    )
+)
 
 where cargo >nul 2>&1 && (
     for /f "tokens=*" %%v in ('cargo -V') do echo   Cargo   : %%v
@@ -73,10 +103,18 @@ set "BIN_DST=%UI_DIR%\bin\generic-coder-backend.exe"
 
 if exist "%PROJECT_DIR%\Cargo.toml" (
     pushd "%PROJECT_DIR%"
-    cargo build --release -j 1 2>&1
+    if "%ENABLE_NATIVE_SSH2%"=="1" (
+        cargo build --release --features native-ssh2 -j 1 2>&1
+    ) else (
+        cargo build --release -j 1 2>&1
+    )
     if errorlevel 1 (
         popd
-        echo   ERROR: Rust build failed. Check compiler output above.
+        if "%ENABLE_NATIVE_SSH2%"=="1" (
+            echo   ERROR: Rust build failed in native-ssh2 mode. Check compiler output above.
+        ) else (
+            echo   ERROR: Rust build failed. Check compiler output above.
+        )
         pause
         exit /b 1
     )

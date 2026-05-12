@@ -11,12 +11,14 @@ const builderBinary = process.platform === 'win32'
 
 const appVersion = resolveAppVersion();
 const args = [...process.argv.slice(2), `-c.extraMetadata.version=${appVersion}`];
+const isWindows = process.platform === 'win32';
 
 console.log(`Using app version ${appVersion}`);
 
 const result = spawnSync(builderBinary, args, {
   cwd: UI_DIR,
   stdio: 'inherit',
+  shell: isWindows,
   env: {
     ...process.env,
     GENERIC_CODER_APP_VERSION: appVersion,
