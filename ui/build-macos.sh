@@ -144,7 +144,7 @@ npm install 2>&1
 echo ""
 
 # ── Build Electron installers (PKG, per-arch) ──────────────────
-APP_VERSION="$(node -p "require('./package.json').version")"
+APP_VERSION="$(node scripts/resolve-app-version.cjs)"
 X64_INSTALLER="$UI_DIR/dist/Generic Coder-${APP_VERSION}-x64-installer.pkg"
 ARM64_INSTALLER="$UI_DIR/dist/Generic Coder-${APP_VERSION}-arm64-installer.pkg"
 

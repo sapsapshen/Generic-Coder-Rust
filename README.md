@@ -202,6 +202,8 @@ Native macOS installers for both arm64 (Apple Silicon) and x64 (Intel) architect
 
 Installed desktop builds now check GitHub Releases for updates on startup. New versions download in the background and prompt for a restart once the installer payload is ready. Release builds must keep the generated `latest*.yml`, `.zip`, and `.blockmap` artifacts alongside the normal installers when publishing.
 
+Desktop build versioning now defaults to the next patch version after the latest Git tag. For example, when the newest tag is `v1.1.1`, packaging outputs `1.1.2` unless `GENERIC_CODER_APP_VERSION` is set explicitly.
+
 ### 🆕 Workbench UI (TypeScript/React)
 The Electron GUI now includes a new **Workbench** view built with TypeScript/React. It provides:
 - Workspace tree browser with collapsible sections

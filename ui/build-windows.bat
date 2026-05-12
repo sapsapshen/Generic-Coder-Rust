@@ -138,6 +138,8 @@ if errorlevel 1 (
 echo   Done.
 echo.
 echo [5/5] Building Windows installer...
+for /f "delims=" %%v in ('node scripts\resolve-app-version.cjs') do set "APP_VERSION=%%v"
+echo   App version : %APP_VERSION%
 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 set ELECTRON_CUSTOM_DIR=v33.4.11
 set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
@@ -169,7 +171,7 @@ for %%f in ("%UI_DIR%\dist\Generic Coder-"*-installer.exe) do (
     echo   %%~nxf  (%%~zf bytes)
 )
 echo.
-echo  Expected: Generic Coder-1.0.0-x64-installer.exe (NSIS installer)
+    echo  Expected: Generic Coder-%APP_VERSION%-x64-installer.exe (NSIS installer)
 
 echo ========================================
 pause

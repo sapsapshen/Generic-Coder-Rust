@@ -1,6 +1,6 @@
 {
   "name": "generic-coder-ui",
-  "version": "1.0.0",
+  "version": "1.1.2",
   "description": "Generic Coder — Autonomous AI Coding Cockpit",
   "main": "main.js",
   "author": "Generic Coder",
@@ -15,11 +15,12 @@
     "prebuild:windows": "npm run build:workbench",
     "prebuild:all": "npm run build:workbench",
     "start": "node scripts/launch-electron.cjs .",
-    "build:macos": "electron-builder --mac --x64 --arm64",
-    "build:macos:x64": "electron-builder --mac --x64",
-    "build:macos:arm64": "electron-builder --mac --arm64",
-    "build:windows": "electron-builder --win nsis --x64",
-    "build:all": "electron-builder --mac --win --x64"
+    "build:macos": "node scripts/run-electron-builder.cjs --mac --x64 --arm64",
+    "build:macos:x64": "node scripts/run-electron-builder.cjs --mac --x64",
+    "build:macos:arm64": "node scripts/run-electron-builder.cjs --mac --arm64",
+    "build:windows": "node scripts/run-electron-builder.cjs --win nsis --x64",
+    "build:all": "node scripts/run-electron-builder.cjs --mac --win --x64",
+    "print:app-version": "node scripts/resolve-app-version.cjs"
   },
   "build": {
     "appId": "com.generic-coder.ui",
