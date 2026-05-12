@@ -50,6 +50,21 @@ where cargo >nul 2>&1 && (
 )
 echo.
 
+REM -- 1.5 Auto bump patch version --------------------------------------
+echo [1.5/5] Bumping patch version...
+pushd "%UI_DIR%"
+set "NEW_VERSION="
+for /f "usebackq delims=" %%v in (`node -e "const fs=require('fs');const pkgPath='package.json';const lockPath='package-lock.json';const readJson=(p)=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\\uFEFF/,''));const pkg=readJson(pkgPath);const p=(pkg.version||'0.0.0').split('.').map(n=>parseInt(n,10)||0);while(p.length<3)p.push(0);p[2]+=1;const next=p.slice(0,3).join('.');pkg.version=next;fs.writeFileSync(pkgPath, JSON.stringify(pkg,null,2));if(fs.existsSync(lockPath)){try{const lock=readJson(lockPath);if(typeof lock.version==='string')lock.version=next;if(lock.packages&&lock.packages['']&&typeof lock.packages[''].version==='string')lock.packages[''].version=next;fs.writeFileSync(lockPath, JSON.stringify(lock,null,2));}catch(e){console.error('[WARN] package-lock.json update skipped: '+e.message);}}console.log(next);"`) do set "NEW_VERSION=%%v"
+if not defined NEW_VERSION (
+    popd
+    echo   ERROR: Failed to bump version.
+    pause
+    exit /b 1
+)
+echo   New version: %NEW_VERSION%
+popd
+echo.
+
 REM -- 2. Build Rust backend --------------------------------------------
 echo [2/5] Building Rust backend...
 
@@ -171,7 +186,7 @@ for %%f in ("%UI_DIR%\dist\Generic Coder-"*-installer.exe) do (
     echo   %%~nxf  (%%~zf bytes)
 )
 echo.
-    echo  Expected: Generic Coder-%APP_VERSION%-x64-installer.exe (NSIS installer)
+echo  Expected: Generic Coder-%APP_VERSION%-x64-installer.exe (NSIS installer)
 
 echo ========================================
 pause
