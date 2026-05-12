@@ -169,15 +169,11 @@ npm run build:macos:arm64 2>&1
 [ -f "$ARM64_INSTALLER" ] || { echo "ERROR: Missing arm64 installer: $ARM64_INSTALLER"; exit 1; }
 
 rm -rf "$UI_DIR/dist/mac" "$UI_DIR/dist/mac-arm64" 2>/dev/null || true
-rm -f "$UI_DIR"/dist/*.dmg 2>/dev/null || true
-rm -f "$UI_DIR"/dist/*.zip 2>/dev/null || true
-rm -f "$UI_DIR"/dist/*.blockmap 2>/dev/null || true
-rm -f "$UI_DIR"/dist/*.yml 2>/dev/null || true
-rm -f "$UI_DIR"/dist/*.yaml 2>/dev/null || true
 
 echo ""
 echo "========================================"
 echo " Done!"
 echo " Installer output: ui/dist/"
 ls -lh "$X64_INSTALLER" "$ARM64_INSTALLER"
+find "$UI_DIR/dist" -maxdepth 1 \( -name '*.zip' -o -name '*.yml' -o -name '*.yaml' -o -name '*.blockmap' \) -print
 echo "========================================"

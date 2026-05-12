@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -11,6 +12,8 @@ let launchPromise = null;
 const BACKEND_HOST = '127.0.0.1';
 const DEFAULT_BACKEND_PORT = 8765;
 let backendPort = DEFAULT_BACKEND_PORT;
+let updateCheckStarted = false;
+let updateDownloaded = false;
 
 function backendOrigin() {
   return `http://${BACKEND_HOST}:${backendPort}`;
@@ -562,6 +565,86 @@ function getLoadingPageUrl() {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
+function isAutoUpdateEnabled() {
+  if (!app.isPackaged) {
+    return false;
+  }
+
+  if (process.env.GENERIC_CODER_DISABLE_AUTO_UPDATE === '1') {
+    return false;
+  }
+
+  return process.platform === 'darwin' || process.platform === 'win32';
+}
+
+async function promptForDownloadedUpdate(version) {
+  const ownerWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const result = await dialog.showMessageBox(ownerWindow, {
+    type: 'info',
+    buttons: ['Restart Now', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+    title: 'Update Ready',
+    message: `Generic Coder ${version} has been downloaded.`,
+    detail: 'Restart the app to finish installing the update.',
+  });
+
+  if (result.response === 0) {
+    setImmediate(() => {
+      autoUpdater.quitAndInstall();
+    });
+  }
+}
+
+function setupAutoUpdater() {
+  if (!isAutoUpdateEnabled() || updateCheckStarted) {
+    return;
+  }
+
+  updateCheckStarted = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for app updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log(`Update available: ${info.version}`);
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('App is up to date.');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    const percent = Number.isFinite(progress.percent) ? progress.percent.toFixed(1) : '0.0';
+    console.log(`Update download progress: ${percent}%`);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log(`Update downloaded: ${info.version}`);
+    if (updateDownloaded) {
+      return;
+    }
+    updateDownloaded = true;
+    void promptForDownloadedUpdate(info.version);
+  });
+
+  autoUpdater.on('error', (error) => {
+    const detail = error && error.stack ? error.stack : String(error);
+    console.error('Auto-update failed:', detail);
+  });
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      const detail = error && error.stack ? error.stack : String(error);
+      console.error('Auto-update check failed:', detail);
+    });
+  }, 1500);
+}
+
 // ── IPC Handlers ──────────────────────────────────────────────
 ipcMain.handle('open-external', async (_event, url) => {
   await shell.openExternal(url);
@@ -584,6 +667,7 @@ ipcMain.handle('get-backend-url', () => {
 // ── App Lifecycle ─────────────────────────────────────────────
 app.whenReady().then(async () => {
   await launchWorkbench();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

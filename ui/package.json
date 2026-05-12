@@ -15,9 +15,9 @@
     "prebuild:windows": "npm run build:workbench",
     "prebuild:all": "npm run build:workbench",
     "start": "node scripts/launch-electron.cjs .",
-    "build:macos": "electron-builder --mac pkg --x64 --arm64",
-    "build:macos:x64": "electron-builder --mac pkg --x64",
-    "build:macos:arm64": "electron-builder --mac pkg --arm64",
+    "build:macos": "electron-builder --mac --x64 --arm64",
+    "build:macos:x64": "electron-builder --mac --x64",
+    "build:macos:arm64": "electron-builder --mac --arm64",
     "build:windows": "electron-builder --win nsis --x64",
     "build:all": "electron-builder --mac --win --x64"
   },
@@ -43,12 +43,27 @@
       }
     ],
     "artifactName": "${productName}-${version}-${arch}-installer.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sapsapshen",
+        "repo": "Generic-Coder-Rust",
+        "releaseType": "release"
+      }
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "assets/icon.icns",
       "target": [
         {
           "target": "pkg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "x64",
             "arm64"
@@ -91,13 +106,14 @@
     }
   },
   "devDependencies": {
-    "esbuild": "^0.25.4",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
+    "esbuild": "^0.25.4",
     "typescript": "^5.8.3"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.45",
+    "electron-updater": "^6.8.3",
     "monaco-editor": "^0.55.1"
   }
 }

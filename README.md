@@ -200,6 +200,8 @@ Persistent session management with save, load, and switch between multiple codin
 ### 🆕 Electron Desktop Installer
 Native macOS installers for both arm64 (Apple Silicon) and x64 (Intel) architectures — now available as `.pkg` installers in `ui/dist/`.
 
+Installed desktop builds now check GitHub Releases for updates on startup. New versions download in the background and prompt for a restart once the installer payload is ready. Release builds must keep the generated `latest*.yml`, `.zip`, and `.blockmap` artifacts alongside the normal installers when publishing.
+
 ### 🆕 Workbench UI (TypeScript/React)
 The Electron GUI now includes a new **Workbench** view built with TypeScript/React. It provides:
 - Workspace tree browser with collapsible sections

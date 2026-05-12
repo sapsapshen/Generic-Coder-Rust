@@ -157,9 +157,6 @@ popd
 echo.
 
 if exist "%UI_DIR%\dist\win-unpacked" rmdir /s /q "%UI_DIR%\dist\win-unpacked"
-del /f /q "%UI_DIR%\dist\*.blockmap" >nul 2>&1
-del /f /q "%UI_DIR%\dist\*.yml" >nul 2>&1
-del /f /q "%UI_DIR%\dist\*.yaml" >nul 2>&1
 del /f /q "%UI_DIR%\dist\*portable*.exe" >nul 2>&1
 
 REM -- Verify output ----------------------------------------------------
