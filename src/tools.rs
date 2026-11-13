@@ -114,26 +114,6 @@ fn resolve_search_root_from(base: &Path, path: Option<&str>) -> Result<PathBuf> 
     Ok(requested)
 }
 
-fn run_command_checked(command: &mut Command, label: &str) -> Result<String> {
-    let output = command
-        .output()
-        .with_context(|| format!("Failed to start {label}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let detail = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            format!("exit status {}", output.status)
-        };
-        return Err(anyhow!("{label} failed: {detail}"));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 fn collapse_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -1718,11 +1698,7 @@ pub fn run_tests(
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::{Mutex, MutexGuard};
-
-    lazy_static::lazy_static! {
-        static ref TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
-    }
+    use std::sync::MutexGuard;
 
     struct TestEnvGuard {
         _guard: MutexGuard<'static, ()>,
@@ -1737,7 +1713,7 @@ mod tests {
     }
 
     fn test_env_guard() -> TestEnvGuard {
-        let guard = TEST_ENV_LOCK.lock().unwrap();
+        let guard = crate::workspace::lock_for_tests();
         let original_cwd = std::env::current_dir().unwrap();
         crate::workspace::reset_for_tests();
         fs::create_dir_all("temp").unwrap();

@@ -8,7 +8,6 @@ use serde_json::Value;
 use tokio::sync::{mpsc, RwLock};
 
 use generic_coder::agent::GenericAgent;
-use generic_coder::error_memory::ErrorMemory;
 use generic_coder::skills::SkillsManager;
 use generic_coder::{config, web};
 
@@ -143,16 +142,10 @@ async fn initialize_runtime(
     let skills_mgr = SkillsManager::new(project_dir);
     let _ = skills_mgr.bootstrap_presets(); // ensure preset skills registered
     let skills_summary = skills_mgr.active_skills_summary();
-    let error_memory = ErrorMemory::new(project_dir);
-    let error_summary = error_memory.avoidance_summary();
     let dream_context = generic_coder::dream::recent_context(project_dir, 5);
     let mut combined = String::new();
     if !skills_summary.is_empty() {
         combined.push_str(&skills_summary);
-    }
-    if !error_summary.is_empty() {
-        combined.push('\n');
-        combined.push_str(&error_summary);
     }
     if !dream_context.is_empty() {
         combined.push('\n');
@@ -457,7 +450,7 @@ async fn print_prompt(agent: &Arc<RwLock<GenericAgent>>) {
 }
 
 async fn read_line_or_interrupt(agent: &Arc<RwLock<GenericAgent>>) -> Option<String> {
-    tokio::task::spawn_blocking(|| {
+    let line = tokio::task::spawn_blocking(|| {
         let mut input = String::new();
         match std::io::stdin().read_line(&mut input) {
             Ok(0) => None,
@@ -467,11 +460,9 @@ async fn read_line_or_interrupt(agent: &Arc<RwLock<GenericAgent>>) -> Option<Str
     })
     .await
     .ok()
-    .flatten()
-    .or_else(|| {
-        futures::executor::block_on(async {
-            agent.read().await.abort();
-            None
-        })
-    })
+    .flatten();
+    if line.is_none() {
+        agent.read().await.abort();
+    }
+    line
 }

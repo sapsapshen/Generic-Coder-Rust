@@ -882,6 +882,12 @@ pub fn effective_root() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
+pub fn lock_for_tests() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(test)]
 pub fn reset_for_tests() {
     let mut wm = WM.lock();
     *wm = WorkspaceManager {
@@ -895,13 +901,10 @@ pub fn reset_for_tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
-
-    static ENV_LOCK: StdMutex<()> = StdMutex::new(());
 
     #[test]
     fn current_process_root_prefers_project_dir_env() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_for_tests();
         let temp = std::env::temp_dir().join(format!(
             "generic-coder-project-root-test-{}",
             std::process::id()

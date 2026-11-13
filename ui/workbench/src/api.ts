@@ -11,8 +11,26 @@ import type {
   WorkspacePreview,
   WorkspaceState,
 } from './types';
+import type { ModeId } from './workbench/common/state';
 
 type JsonValue = Record<string, unknown>;
+
+function normalizeMode(mode: ModeId | 'work' | undefined): ModeId {
+  switch (mode) {
+    case 'ask':
+    case 'plan':
+    case 'build':
+    case 'review':
+      return mode;
+    case 'work':
+    case undefined:
+      return 'build';
+    default: {
+      const unexpected: never = mode;
+      return unexpected;
+    }
+  }
+}
 
 async function readJson<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as T & { error?: string };
@@ -266,13 +284,13 @@ export class ApiClient {
     await readJson<JsonValue>(response);
   }
 
-  async mode(): Promise<'work' | 'plan' | 'review'> {
+  async mode(): Promise<ModeId> {
     const response = await fetch('/api/mode');
-    const payload = await readJson<{ mode: 'work' | 'plan' | 'review' }>(response);
-    return payload.mode;
+    const payload = await readJson<{ mode: ModeId | 'work' }>(response);
+    return normalizeMode(payload.mode);
   }
 
-  async setMode(mode: 'work' | 'plan' | 'review'): Promise<void> {
+  async setMode(mode: ModeId): Promise<void> {
     const response = await fetch('/api/mode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -344,13 +362,13 @@ export class ApiClient {
     return readJson<{ ok: boolean; effort: string | null }>(response);
   }
 
-  async chat(prompt: string): Promise<{ handled?: boolean; messages?: unknown[]; notice?: string; task_id?: string; error?: string }> {
+  async chat(prompt: string): Promise<{ handled?: boolean; messages?: unknown[]; notice?: string; mode?: ModeId | 'work'; task_id?: string; error?: string }> {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt }),
     });
-    return readJson<{ handled?: boolean; messages?: unknown[]; notice?: string; task_id?: string; error?: string }>(response);
+    return readJson<{ handled?: boolean; messages?: unknown[]; notice?: string; mode?: ModeId | 'work'; task_id?: string; error?: string }>(response);
   }
 
   async task(taskId: string): Promise<TaskStatus> {

@@ -2,7 +2,7 @@
 
 ## Why This File Is Short
 
-GenericAgent's core is ~3K lines. Every file in this repo will be read by AI agents — potentially thousands of times. Extra words cost real tokens and push useful context out of the window, increasing hallucinations. This document practices what it preaches: **say only what matters.**
+The Rust core lives in `src/` and the terminal UI in `tui/`. Every file in this repo may be read by agents. Extra words cost real tokens and push useful context out of the window. This document practices what it preaches: **say only what matters.**
 
 ## Before You Contribute
 

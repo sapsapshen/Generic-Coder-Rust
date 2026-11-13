@@ -368,7 +368,7 @@ impl App {
             status_msg: String::from("Ready. Type /help for commands."),
             status_timer: None,
             sidebar_width: 24,
-            current_mode: AgentMode::Work,
+            current_mode: AgentMode::Build,
             multi_agent_enabled: false,
             one_shot_enabled: false,
             models,
@@ -529,7 +529,7 @@ impl App {
             KeyCode::End => {
                 self.scroll_offset = 0;
             }
-            KeyCode::F(1) => self.switch_mode(AgentMode::Work),
+            KeyCode::F(1) => self.switch_mode(AgentMode::Build),
             KeyCode::F(2) => self.switch_mode(AgentMode::Plan),
             KeyCode::F(3) => self.switch_mode(AgentMode::Review),
             KeyCode::F(4) => self.toggle_multi_agent(),
