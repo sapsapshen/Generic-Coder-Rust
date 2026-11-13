@@ -80,6 +80,9 @@ pub fn tool_mutates(name: &str) -> bool {
     if matches!(
         name,
         "code_run"
+            | "run_tests"
+            | "lsp_get_diagnostics"
+            | "workspace_open"
             | "file_patch"
             | "file_write"
             | "file_revert"
@@ -248,6 +251,9 @@ mod tests {
         assert!(!AgentMode::Review.allows_mutation());
         assert!(tool_mutates("file_write"));
         assert!(tool_mutates("code_run"));
+        assert!(tool_mutates("run_tests"));
+        assert!(tool_mutates("lsp_get_diagnostics"));
+        assert!(tool_mutates("workspace_open"));
         assert!(tool_mutates("computer_left_click"));
         assert!(!tool_mutates("file_read"));
         assert!(!tool_mutates("computer_screenshot"));

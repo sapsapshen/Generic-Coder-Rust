@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, RwLock,
@@ -21,6 +21,23 @@ use crate::types::{
     LlmConfig, LlmResponse, Message, MessageContent, StepOutcome, ToolCall, ToolSchema,
 };
 use crate::workflow::{AgentMode, Workflow};
+
+pub fn project_dir_from_agent_cwd(cwd: &Path) -> PathBuf {
+    if cwd.ends_with("temp") {
+        cwd.parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| cwd.to_path_buf())
+    } else {
+        cwd.to_path_buf()
+    }
+}
+
+pub fn current_agent_project_dir() -> PathBuf {
+    match default_agent_cwd() {
+        Ok(cwd) => project_dir_from_agent_cwd(&cwd),
+        Err(_) => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    }
+}
 
 fn default_agent_cwd() -> Result<PathBuf> {
     let root = std::env::var("GENERIC_CODER_PROJECT_DIR")
@@ -1284,12 +1301,7 @@ pub struct AgentHandler {
 
 impl AgentHandler {
     pub fn new(cwd: PathBuf) -> Self {
-        // Derive project_dir from cwd: cwd is usually ./temp, so go up one level
-        let project_dir = if cwd.ends_with("temp") {
-            cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd.clone())
-        } else {
-            cwd.clone()
-        };
+        let project_dir = project_dir_from_agent_cwd(&cwd);
         Self {
             working: RwLock::new(HashMap::new()),
             current_turn: RwLock::new(0),
@@ -3452,6 +3464,22 @@ mod tests {
         assert!(!test_root.join("notes.txt").exists());
 
         let _ = fs::remove_dir_all(&test_root);
+    }
+
+    #[test]
+    fn error_memory_root_follows_the_agent_workspace() {
+        let root = std::path::PathBuf::from("/work/repo");
+        assert_eq!(project_dir_from_agent_cwd(&root.join("temp")), root);
+        assert_eq!(project_dir_from_agent_cwd(&root), root);
+
+        let cwd = super::default_agent_cwd().unwrap();
+        let handler = AgentHandler::new(cwd.clone());
+        let expected = crate::error_memory::ErrorMemory::new(&super::current_agent_project_dir());
+        assert_eq!(handler.error_memory.store_path, expected.store_path);
+        assert_eq!(
+            handler.error_memory.store_path,
+            crate::error_memory::ErrorMemory::new(&project_dir_from_agent_cwd(&cwd)).store_path
+        );
     }
 
     #[test]

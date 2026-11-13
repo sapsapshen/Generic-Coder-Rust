@@ -148,7 +148,6 @@ pub struct AppState {
     uploads_dir: PathBuf,
     workspace_picker_token: Option<String>,
     skills_manager: SkillsManager,
-    error_memory: ErrorMemory,
     workflow: RwLock<Workflow>,
     current_mode: RwLock<AgentMode>,
     multi_agent_enabled: RwLock<bool>,
@@ -1157,6 +1156,10 @@ async fn connect_remote(
     })))
 }
 
+fn active_error_memory() -> ErrorMemory {
+    ErrorMemory::new(&crate::agent::current_agent_project_dir())
+}
+
 enum ChatControl<'a> {
     New,
     Fork(&'a str),
@@ -1258,8 +1261,7 @@ async fn handle_chat_control(
             })))
         }
         ChatControl::ClearErrors => {
-            state
-                .error_memory
+            active_error_memory()
                 .clear()
                 .map_err(|err| json_error(StatusCode::INTERNAL_SERVER_ERROR, err))?;
             Ok(Json(json!({
@@ -1938,16 +1940,13 @@ async fn skills_preview(
 
 // ── Error Log API handlers ──────────────────────────────
 
-async fn errors_list(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let records = state
-        .error_memory
+async fn errors_list() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let memory = active_error_memory();
+    let records = memory
         .list_records()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    let total = state.error_memory.total_errors().unwrap_or(0);
-    let warnings = state
-        .error_memory
+    let total = memory.total_errors().unwrap_or(0);
+    let warnings = memory
         .active_warnings()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(json!({
@@ -1957,22 +1956,17 @@ async fn errors_list(
     })))
 }
 
-async fn errors_clear(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    state
-        .error_memory
+async fn errors_clear() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    active_error_memory()
         .clear()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(json!({"cleared": true})))
 }
 
 async fn errors_forget(
-    State(state): State<Arc<AppState>>,
     Path(fingerprint): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    state
-        .error_memory
+    active_error_memory()
         .forget(&fingerprint)
         .map_err(|e| json_error(StatusCode::NOT_FOUND, e))?;
     Ok(Json(json!({"forgotten": fingerprint})))
@@ -2646,7 +2640,6 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
                 })
         },
         skills_manager: SkillsManager::new(&config.project_dir),
-        error_memory: ErrorMemory::new(&config.project_dir),
         workflow: RwLock::new(Workflow::default()),
         current_mode: RwLock::new(AgentMode::Build),
         multi_agent_enabled: RwLock::new(false),
