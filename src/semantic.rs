@@ -619,6 +619,28 @@ mod tests {
         root
     }
 
+    struct WorkspaceGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl WorkspaceGuard {
+        fn open(root: &std::path::Path) -> Self {
+            let guard = Self {
+                _lock: crate::workspace::lock_for_tests(),
+            };
+            crate::workspace::reset_for_tests();
+            let opened = crate::workspace::open_folder(&root.display().to_string(), "semantic-test");
+            assert_eq!(opened["status"], "success");
+            guard
+        }
+    }
+
+    impl Drop for WorkspaceGuard {
+        fn drop(&mut self) {
+            crate::workspace::reset_for_tests();
+        }
+    }
+
     #[test]
     fn semantic_search_finds_rust_symbols() {
         let root = temp_root("search");
@@ -627,12 +649,13 @@ mod tests {
             "pub struct UserService;\nimpl UserService {\n    pub fn authenticate_user(&self) {}\n}\n",
         )
         .unwrap();
-        crate::workspace::open_folder(&root.display().to_string(), "semantic-test");
+        let _guard = WorkspaceGuard::open(&root);
 
         let result =
             semantic_search("authenticate", Some(&root.display().to_string()), Some(10)).unwrap();
         assert_eq!(result["status"], "ok");
         assert!(result["count"].as_u64().unwrap() >= 1);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -643,7 +666,7 @@ mod tests {
             "fn old_name() {}\nfn run() { old_name(); }\n",
         )
         .unwrap();
-        crate::workspace::open_folder(&root.display().to_string(), "semantic-test");
+        let _guard = WorkspaceGuard::open(&root);
 
         let result = rename_preview(
             "old_name",
@@ -655,5 +678,6 @@ mod tests {
         assert_eq!(result["status"], "ok");
         assert_eq!(result["new_name"], "new_name");
         assert!(result["reference_count"].as_u64().unwrap() >= 2);
+        let _ = fs::remove_dir_all(&root);
     }
 }

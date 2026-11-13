@@ -148,7 +148,6 @@ pub struct AppState {
     uploads_dir: PathBuf,
     workspace_picker_token: Option<String>,
     skills_manager: SkillsManager,
-    error_memory: ErrorMemory,
     workflow: RwLock<Workflow>,
     current_mode: RwLock<AgentMode>,
     multi_agent_enabled: RwLock<bool>,
@@ -825,11 +824,7 @@ async fn bootstrap(State(state): State<Arc<AppState>>) -> Json<Value> {
         .unwrap_or_else(|_| (pending_task.is_some(), None, false, None));
 
     let agent_mode = { *state.current_mode.read() };
-    let mode_str = match agent_mode {
-        AgentMode::Work => "work",
-        AgentMode::Plan => "plan",
-        AgentMode::Review => "review",
-    };
+    let mode_str = agent_mode.as_str();
     let workflow = { state.workflow.read().clone() };
 
     Json(json!({
@@ -1161,6 +1156,122 @@ async fn connect_remote(
     })))
 }
 
+fn active_error_memory() -> ErrorMemory {
+    ErrorMemory::new(&crate::agent::current_agent_project_dir())
+}
+
+enum ChatControl<'a> {
+    New,
+    Fork(&'a str),
+    Continue(&'a str),
+    SetMode(AgentMode),
+    ClearErrors,
+}
+
+fn parse_chat_control(prompt: &str) -> Option<ChatControl<'_>> {
+    let mut parts = prompt.split_whitespace();
+    let command = parts.next()?;
+    let rest_is_empty = parts.next().is_none();
+    let rest = prompt[command.len()..].trim();
+    match command.to_ascii_lowercase().as_str() {
+        "/new" if rest_is_empty => Some(ChatControl::New),
+        "/fork" if !rest.is_empty() => Some(ChatControl::Fork(rest)),
+        "/continue" if !rest.is_empty() => Some(ChatControl::Continue(rest)),
+        "/ask" | "/plan" | "/build" | "/work" | "/review" if rest_is_empty => {
+            AgentMode::from_str(command.trim_start_matches('/')).map(ChatControl::SetMode)
+        }
+        "/clear" if rest_is_empty => Some(ChatControl::ClearErrors),
+        _ => None,
+    }
+}
+
+async fn handle_chat_control(
+    state: Arc<AppState>,
+    control: ChatControl<'_>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match control {
+        ChatControl::New => {
+            let _ = persist_current_session(&state, None);
+            state.messages.write().clear();
+            *state.active_task_id.write() = None;
+            *state.active_session_index.write() = None;
+            *state.active_checkpoint_index.write() = None;
+            reload_persisted_sessions(&state);
+            Ok(Json(json!({
+                "handled": true,
+                "messages": Vec::<Value>::new(),
+            })))
+        }
+        ChatControl::Fork(raw) => {
+            let (session_index, checkpoint_index) = parse_session_target(raw).ok_or_else(|| {
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    "Invalid fork target. Use /fork <session> or /fork <session>@<checkpoint>",
+                )
+            })?;
+            let forked = session_store::fork_session(session_index, checkpoint_index)
+                .map_err(|err| json_error(StatusCode::BAD_REQUEST, format!("{err:#}")))?;
+            state.messages.write().clone_from(&forked.messages);
+            *state.active_session_index.write() = Some(forked.index);
+            *state.active_checkpoint_index.write() = None;
+            reload_persisted_sessions(&state);
+            Ok(Json(json!({
+                "handled": true,
+                "messages": forked.messages,
+                "notice": format!("Forked session #{} into #{}", session_index, forked.index),
+            })))
+        }
+        ChatControl::Continue(raw) => {
+            let (target, checkpoint_index) = parse_session_target(raw).ok_or_else(|| {
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    "Invalid session target. Use /continue <session> or /continue <session>@<checkpoint>",
+                )
+            })?;
+            let Some(session) = session_store::get_session(target) else {
+                return Err(json_error(StatusCode::NOT_FOUND, "Session not found"));
+            };
+            let (messages, notice_suffix) = if let Some(checkpoint_index) = checkpoint_index {
+                let checkpoint = session_store::get_checkpoint(target, checkpoint_index)
+                    .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Checkpoint not found"))?;
+                (
+                    checkpoint.messages,
+                    format!(" checkpoint {}", checkpoint_index),
+                )
+            } else {
+                (session.messages.clone(), String::new())
+            };
+            state.messages.write().clone_from(&messages);
+            *state.active_session_index.write() = Some(target);
+            *state.active_checkpoint_index.write() = checkpoint_index;
+            reload_persisted_sessions(&state);
+            Ok(Json(json!({
+                "handled": true,
+                "messages": messages,
+                "notice": format!("Restored session #{}{}", target, notice_suffix),
+            })))
+        }
+        ChatControl::SetMode(mode) => {
+            *state.current_mode.write() = mode;
+            state.agent.read().await.set_mode(mode);
+            Ok(Json(json!({
+                "handled": true,
+                "mode": mode.as_str(),
+                "notice": format!("Switched to {} mode", mode.label()),
+            })))
+        }
+        ChatControl::ClearErrors => {
+            active_error_memory()
+                .clear()
+                .map_err(|err| json_error(StatusCode::INTERNAL_SERVER_ERROR, err))?;
+            Ok(Json(json!({
+                "handled": true,
+                "notice": "Cleared saved error memory. The next task reloads avoidance hints.",
+            })))
+        }
+    }
+}
+
 async fn chat(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChatPayload>,
@@ -1189,64 +1300,8 @@ async fn chat(
         ));
     }
 
-    if prompt == "/new" {
-        let _ = persist_current_session(&state, None);
-        state.messages.write().clear();
-        *state.active_task_id.write() = None;
-        *state.active_session_index.write() = None;
-        *state.active_checkpoint_index.write() = None;
-        reload_persisted_sessions(&state);
-        return Ok(Json(
-            json!({"handled": true, "messages": Vec::<Value>::new()}),
-        ));
-    }
-
-    if let Some(raw) = prompt.strip_prefix("/fork ") {
-        let (session_index, checkpoint_index) =
-            parse_session_target(raw.trim()).ok_or_else(|| {
-                json_error(
-                    StatusCode::BAD_REQUEST,
-                    "Invalid fork target. Use /fork <session> or /fork <session>@<checkpoint>",
-                )
-            })?;
-        let forked = session_store::fork_session(session_index, checkpoint_index)
-            .map_err(|err| json_error(StatusCode::BAD_REQUEST, format!("{err:#}")))?;
-        state.messages.write().clone_from(&forked.messages);
-        *state.active_session_index.write() = Some(forked.index);
-        *state.active_checkpoint_index.write() = None;
-        reload_persisted_sessions(&state);
-        return Ok(Json(json!({
-            "handled": true,
-            "messages": forked.messages,
-            "notice": format!("Forked session #{} into #{}", session_index, forked.index),
-        })));
-    }
-
-    if let Some(index_str) = prompt.strip_prefix("/continue ") {
-        let (target, checkpoint_index) = parse_session_target(index_str.trim())
-            .ok_or_else(|| json_error(StatusCode::BAD_REQUEST, "Invalid session target. Use /continue <session> or /continue <session>@<checkpoint>"))?;
-        let Some(session) = session_store::get_session(target) else {
-            return Err(json_error(StatusCode::NOT_FOUND, "Session not found"));
-        };
-        let (messages, notice_suffix) = if let Some(checkpoint_index) = checkpoint_index {
-            let checkpoint = session_store::get_checkpoint(target, checkpoint_index)
-                .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Checkpoint not found"))?;
-            (
-                checkpoint.messages,
-                format!(" checkpoint {}", checkpoint_index),
-            )
-        } else {
-            (session.messages.clone(), String::new())
-        };
-        state.messages.write().clone_from(&messages);
-        *state.active_session_index.write() = Some(target);
-        *state.active_checkpoint_index.write() = checkpoint_index;
-        reload_persisted_sessions(&state);
-        return Ok(Json(json!({
-            "handled": true,
-            "messages": messages,
-            "notice": format!("Restored session #{}{}", target, notice_suffix),
-        })));
+    if let Some(control) = parse_chat_control(&prompt) {
+        return handle_chat_control(state, control).await;
     }
 
     let task_id = uuid::Uuid::new_v4().to_string();
@@ -1885,16 +1940,13 @@ async fn skills_preview(
 
 // ── Error Log API handlers ──────────────────────────────
 
-async fn errors_list(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let records = state
-        .error_memory
+async fn errors_list() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let memory = active_error_memory();
+    let records = memory
         .list_records()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    let total = state.error_memory.total_errors().unwrap_or(0);
-    let warnings = state
-        .error_memory
+    let total = memory.total_errors().unwrap_or(0);
+    let warnings = memory
         .active_warnings()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(json!({
@@ -1904,22 +1956,17 @@ async fn errors_list(
     })))
 }
 
-async fn errors_clear(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    state
-        .error_memory
+async fn errors_clear() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    active_error_memory()
         .clear()
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(json!({"cleared": true})))
 }
 
 async fn errors_forget(
-    State(state): State<Arc<AppState>>,
     Path(fingerprint): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    state
-        .error_memory
+    active_error_memory()
         .forget(&fingerprint)
         .map_err(|e| json_error(StatusCode::NOT_FOUND, e))?;
     Ok(Json(json!({"forgotten": fingerprint})))
@@ -1934,13 +1981,8 @@ struct ModePayload {
 
 async fn get_mode(State(state): State<Arc<AppState>>) -> Json<Value> {
     let mode = *state.current_mode.read();
-    let mode_str = match mode {
-        AgentMode::Work => "work",
-        AgentMode::Plan => "plan",
-        AgentMode::Review => "review",
-    };
     Json(json!({
-        "mode": mode_str,
+        "mode": mode.as_str(),
         "workflow_active": state.workflow.read().active,
     }))
 }
@@ -1957,12 +1999,7 @@ async fn set_mode(
     })?;
     *state.current_mode.write() = mode;
     state.agent.read().await.set_mode(mode);
-    let mode_str = match mode {
-        AgentMode::Work => "work",
-        AgentMode::Plan => "plan",
-        AgentMode::Review => "review",
-    };
-    Ok(Json(json!({"mode": mode_str})))
+    Ok(Json(json!({"mode": mode.as_str()})))
 }
 
 // ── Workflow API handlers ────────────────────────────────
@@ -1985,7 +2022,7 @@ async fn set_workflow(
         .nodes
         .into_iter()
         .map(|n| {
-            let mode = AgentMode::from_str(&n.mode).unwrap_or(AgentMode::Work);
+            let mode = AgentMode::from_str(&n.mode).unwrap_or(AgentMode::Build);
             WorkflowNode {
                 mode,
                 label: n.label,
@@ -2598,14 +2635,13 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
                 .filter(|v| !v.trim().is_empty())
                 .or_else(|| {
                     let token = uuid::Uuid::new_v4().to_string().replace('-', "");
-                    log::info!("Auto-generated workspace picker token: {token}");
+                    log::info!("Generated a workspace picker token for this process");
                     Some(token)
                 })
         },
         skills_manager: SkillsManager::new(&config.project_dir),
-        error_memory: ErrorMemory::new(&config.project_dir),
         workflow: RwLock::new(Workflow::default()),
-        current_mode: RwLock::new(AgentMode::Work),
+        current_mode: RwLock::new(AgentMode::Build),
         multi_agent_enabled: RwLock::new(false),
         one_shot_enabled: RwLock::new(false),
         computer_use_enabled: RwLock::new(true), // enabled by default on supported platforms
@@ -2629,4 +2665,53 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, create_app(state)).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_chat_control, ChatControl};
+    use crate::workflow::AgentMode;
+
+    #[test]
+    fn chat_controls_cover_documented_slash_commands() {
+        assert!(matches!(parse_chat_control("/new"), Some(ChatControl::New)));
+        assert!(matches!(
+            parse_chat_control("/ask"),
+            Some(ChatControl::SetMode(AgentMode::Ask))
+        ));
+        assert!(matches!(
+            parse_chat_control("/work"),
+            Some(ChatControl::SetMode(AgentMode::Build))
+        ));
+        assert!(matches!(
+            parse_chat_control("/build"),
+            Some(ChatControl::SetMode(AgentMode::Build))
+        ));
+        assert!(matches!(
+            parse_chat_control("/plan"),
+            Some(ChatControl::SetMode(AgentMode::Plan))
+        ));
+        assert!(matches!(
+            parse_chat_control("/review"),
+            Some(ChatControl::SetMode(AgentMode::Review))
+        ));
+        assert!(matches!(
+            parse_chat_control("/clear"),
+            Some(ChatControl::ClearErrors)
+        ));
+        assert!(matches!(
+            parse_chat_control("/fork 3@1"),
+            Some(ChatControl::Fork("3@1"))
+        ));
+        assert!(matches!(
+            parse_chat_control("/continue 2"),
+            Some(ChatControl::Continue("2"))
+        ));
+        assert!(matches!(
+            parse_chat_control("/ASK"),
+            Some(ChatControl::SetMode(AgentMode::Ask))
+        ));
+        assert!(parse_chat_control("/ask explain this").is_none());
+        assert!(parse_chat_control("please /plan").is_none());
+    }
 }

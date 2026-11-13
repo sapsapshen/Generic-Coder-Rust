@@ -1,6 +1,6 @@
 # Generic Coder (Rust)
 
-Rust-first local coding cockpit with an Axum backend, browser Web UI, Electron desktop shell, optional TUI, configurable LLM backends, workspace and Git tools, remote SSH support, workflow modes, ACP multi-agent collaboration, One Shot autonomous mode, Computer Use, **built-in provider profiles, Electron installer packaging, a new Workbench UI, four-mode chat execution (Ask/Plan/Build/Review) with streaming agent logs, and an integrated LLM optimizer pipeline**.
+Rust-first local coding cockpit with an Axum backend, browser Web UI, Electron desktop shell, optional TUI, configurable LLM backends, workspace and Git tools, remote SSH support, workflow modes, ACP multi-agent collaboration, One Shot autonomous mode, Computer Use (via a local Python helper), **built-in provider profiles, Electron installer packaging, a Workbench UI, and four-mode chat execution (Ask/Plan/Build/Review) with streaming agent logs**.
 
 **Language / Idioma / 语言:** [中文](#zh) | [English](#en) | [Español](#es)
 
@@ -122,22 +122,7 @@ flowchart LR
     LogToggle -- "no" --> ChatLean["Chat Window\nfinal answer only"]
 ```
 
-### LLM Optimizer Pipeline / LLM 优化器管道
-
-```mermaid
-graph LR
-    subgraph Opt["LLM Optimizer (temp/optimizer/)"]
-        direction TB
-        P0["P0 · Network\nHTTP/2 pool\nSSE zero-copy\nPrefix cache · FIM"]
-        P1["P1 · Memory\nArena alloc\nEntropy compression\nPriority queue"]
-        P2["P2 · Inference\nRate limiter\nMulti-model router\nMetrics + tracing"]
-        P3["P3 · Advanced\nSIMD tokenization\nLocal KV cache\nBPE extension"]
-        P0 --> P1 --> P2 --> P3
-    end
-
-    Req["Incoming Request"] --> P0
-    P3 --> Resp["Optimized Response\n(lower latency · lower cost)"]
-```
+Streaming responses are parsed in `src/llm.rs`. This repository does not contain a `temp/optimizer/` crate.
 
 ---
 
@@ -145,14 +130,14 @@ graph LR
 
 ### 🆕 Four-Mode Chat Execution System (2026-05-10)
 
-The chat interface now supports four purpose-built execution modes, each with a **100-turn long-task budget**:
+The chat interface supports four execution modes. Ask, Plan, and Review are read-only: mutating tools such as `file_write`, `code_run`, and Computer Use actions are rejected. Build is the execution mode. The older name `work` is still accepted and means Build.
 
-| Mode | Icon | Purpose | Behavior |
-|------|------|---------|---------|
-| **Ask** | 🔍 | Q&A and explanations | Lightweight reasoning; answers directly |
-| **Plan** | 📋 | Task decomposition | Produces a structured plan before acting |
-| **Build** | 🔨 | Code generation & execution | Full tool-use loop; runs until output is stable |
-| **Review** | 🔎 | Code analysis & audit | Reads codebase; produces structured findings |
+| Mode | Purpose | Turn budget | Writes |
+|------|---------|-------------|--------|
+| **Ask** | Q&A and explanations | 70 | No |
+| **Plan** | Task decomposition | 100 | No |
+| **Build** | Code generation and execution (`work` alias) | 70 | Yes |
+| **Review** | Code analysis and audit | 50 | No |
 
 - **Auto-mode detection** — when no mode is selected, the agent analyzes the input with keyword heuristics and automatically pre-selects the best mode. User override is always respected.
 - **Streaming agent logs** — an **Agent Logs** checkbox in the chat toolbar controls whether reasoning traces and tool calls appear in the chat window (default: enabled).
@@ -161,30 +146,17 @@ The chat interface now supports four purpose-built execution modes, each with a 
 - **Red stop button** — clicking the red ■ button immediately cancels all running agent background work.
 - **New session button** — clicking **New** beside the session selector opens a fresh context-free session.
 
-### 🆕 LLM Optimizer Pipeline (2026-05-10)
+### Slash commands
 
-A dedicated optimizer crate (`temp/optimizer/`) implements a four-phase performance and cost reduction pipeline applied to every LLM request:
+These commands are handled by the server and are not sent to the model:
 
-**P0 – Network Layer (shipped)**
-- HTTP/2 connection pool (`h2` crate) — eliminates per-request TCP handshake overhead
-- SSE zero-copy parser (`winnow`) — 50% lower CPU on streaming token processing
-- Prefix-cache-aware prompt orchestration — fixed system prompt placed first to maximize DeepSeek cache hit rate
-- FIM (Fill-in-Middle) native integration for code completion tasks
-
-**P1 – Memory Layer (shipped)**
-- `bumpalo` arena allocator — request-scoped memory with 80% lower allocation overhead
-- Entropy-based dynamic prompt compression — removes low-information tokens before sending
-- Request priority queue — user-visible requests preempt background prefetch work
-
-**P2 – Inference Layer (in progress)**
-- Adaptive rate limiter with token-bucket + backoff — near-zero 429 errors
-- Multi-model intelligent router — routes simple tasks to cheaper models automatically
-- `tracing` + `metrics` observability integration
-
-**P3 – Advanced (planned)**
-- SIMD-accelerated tokenization post-processing
-- Local KV cache for offline degraded operation
-- DeepSeek-specific BPE vocabulary extension
+| Command | Effect |
+|---------|--------|
+| `/new` | Start a fresh session |
+| `/fork <n>` or `/fork <n>@<checkpoint>` | Fork a saved session |
+| `/continue <n>` or `/continue <n>@<checkpoint>` | Restore a saved session |
+| `/ask`, `/plan`, `/build`, `/review` | Switch mode. `/work` is an alias of `/build` |
+| `/clear` | Clear the on-disk error memory. The next task reloads avoidance hints |
 
 ### 🆕 Workspace Directory Priority Fix (2026-05-10)
 
@@ -305,14 +277,14 @@ http://127.0.0.1:8765
 
 #### 四模式聊天执行系统
 
-聊天界面现已支持四种执行模式，每种模式均支持 **100 轮超长任务预算**：
+聊天界面支持四种执行模式。Ask、Plan、Review 是只读模式，`file_write`、`code_run` 和 Computer Use 等会改动环境的工具会被拒绝。Build 才是执行模式。旧名称 `work` 仍然可用，等价于 Build。
 
-| 模式 | 图标 | 适用场景 | 行为策略 |
-|------|------|---------|---------|
-| **Ask** | 🔍 | 问答与解释 | 轻量推理，直接作答 |
-| **Plan** | 📋 | 任务分解与规划 | 先生成结构化计划，再执行 |
-| **Build** | 🔨 | 代码生成与执行 | 全工具调用循环，持续运行直到输出稳定 |
-| **Review** | 🔎 | 代码审查与分析 | 读取代码库，输出结构化发现 |
+| 模式 | 适用场景 | 轮次上限 | 是否写文件 |
+|------|---------|---------|-----------|
+| **Ask** | 问答与解释 | 70 | 否 |
+| **Plan** | 任务分解与规划 | 100 | 否 |
+| **Build** | 代码生成与执行（`work` 别名） | 70 | 是 |
+| **Review** | 代码审查与分析 | 50 | 否 |
 
 - **自动模式识别** — 未选择模式时，Agent 通过关键词启发式分析输入内容，自动预选最合适的模式；用户手动调整后以用户选择为准
 - **流式 Agent 日志** — 聊天工具栏中新增 **Agent Logs** 勾选框，控制是否在聊天主窗口显示推理过程和工具调用（默认开启）
@@ -321,14 +293,9 @@ http://127.0.0.1:8765
 - **红色停止按钮** — 点击红色 ■ 按钮立即终止所有后台 Agent 任务
 - **New 按钮** — 点击会话旁 **New** 按钮，打开不含任何历史上下文的全新会话
 
-#### LLM 优化器管道
+斜杠命令由服务端处理，不会发给模型：`/new`、`/fork`、`/continue`、`/ask`、`/plan`、`/build`、`/review`、`/work`（等同 `/build`）、`/clear`。`/clear` 会清掉磁盘上的错误记忆，下一次任务会重新加载回避提示。
 
-新增 `temp/optimizer/` crate，实现四阶段性能与成本优化管道：
-
-- **P0 — 网络层**（已上线）：HTTP/2 连接池、SSE 零拷贝解析器、前缀缓存感知 Prompt 编排、FIM 原生集成
-- **P1 — 内存层**（已上线）：`bumpalo` Arena 分配器、基于信息熵的动态 Prompt 压缩、请求优先级队列
-- **P2 — 推理层**（进行中）：自适应限流器、多模型智能路由、`tracing` + `metrics` 可观测性
-- **P3 — 高级优化**（规划中）：SIMD 加速分词、本地 KV 缓存降级、DeepSeek 专用 BPE 词表扩展
+模型流式输出在 `src/llm.rs` 中解析。仓库里没有 `temp/optimizer/` crate。
 
 #### 工作目录优先级修复
 
@@ -360,7 +327,7 @@ Rust 版本已接管全部运行路径：
 | `src/acp.rs` | ACP 多智能体协作协议（Orchestrator + Specialist） |
 | `src/oneshot.rs` | One Shot 自主脑暴驱动执行（外层发散 + 内层执行） |
 | `src/llm.rs` | Claude / OpenAI 兼容后端与流式解析 |
-| `src/workflow.rs` | Ask / Plan / Build / Review 四模式工作流管道（每模式100轮预算） |
+| `src/workflow.rs` | Ask / Plan / Build / Review。轮次上限 70 / 100 / 70 / 50；仅 Build 可改文件 |
 | `src/skills.rs` | 可插拔技能注册、安装、启用/禁用管理 |
 | `src/error_memory.rs` | 持久化错误记忆与自动回避提示 |
 | `src/tools.rs` | 文件读写、Shell、Git、Web、Computer Use 等工具实现 |
@@ -371,7 +338,7 @@ Rust 版本已接管全部运行路径：
 | `src/session_store.rs` | 会话持久化与切换 |
 | `src/types.rs` | 共享类型定义 |
 | `src/config.rs` | 配置加载与持久化 |
-| `temp/optimizer/` | LLM 优化器管道（HTTP/2、SSE 零拷贝、前缀缓存、Arena 分配、Prompt 压缩） |
+| `src/computer_use.rs` | Computer Use 的 Python 桥接 |
 | `tui/src/` | TUI 终端界面 |
 | `ui/` | Electron 主进程、预加载脚本、构建配置 |
 | `ui/workbench/` | Workbench TypeScript/React 视图 |
@@ -382,7 +349,7 @@ Rust 版本已接管全部运行路径：
 - Rust + Axum Web 服务
 - **Web UI**：浏览器中使用的默认工作台
 - **Electron 桌面 UI**：桌面壳、Apple 风格字体、2.5× 图标放大、更轻的顶部 chrome
-- **TUI**：终端原生工作台（~2060 行 Rust）
+- **TUI**：终端界面，F1 Build、F2 Plan、F3 Review
 - 多模型配置、切换与本地持久化
 - 内置 15+ 提供商预设配置（DeepSeek / Qwen / Kimi / MiniMax / Doubao / Hunyuan / Qianfan / Zhipu / OpenAI / Anthropic / OpenRouter）
 - 本地工作区选择、文件树浏览、文件搜索、文本/图片预览
@@ -390,7 +357,7 @@ Rust 版本已接管全部运行路径：
 - Git 变更查看、Diff 预览、回退辅助
 - 远程 SSH 连接与文件/命令操作
 - 图片上传到上下文
-- **Ask / Plan / Build / Review** 四模式执行系统（每模式 100 轮超长任务预算）
+- **Ask / Plan / Build / Review** 四模式（轮次上限 70 / 100 / 70 / 50；仅 Build 可改文件）
 - 自动模式识别 + 用户手动覆盖
 - 流式 Agent 日志（可在聊天窗口开启/关闭）
 - IME 感知回车发送 + Shift+Enter 换行 + 命令历史浏览
@@ -400,7 +367,6 @@ Rust 版本已接管全部运行路径：
 - 7 项预设技能，支持远程安装新技能
 - 持久化错误记忆 + 自动回避提示
 - Computer Use（截屏 + 鼠标/键盘操作），CDP 桥接扩展
-- LLM 优化器管道（HTTP/2、SSE 零拷贝、前缀缓存、Arena 分配、Prompt 压缩）
 - Electron 桌面安装打包（macOS arm64 / x64 .pkg）
 - Token 用量实时统计
 - 输入草稿恢复（ArrowUp / ArrowDown）
@@ -421,7 +387,7 @@ Generic Coder is a **local AI coding cockpit** built with Rust + Axum at the bac
 - **Electron Desktop** (polished native shell with Apple design language)
 - **TUI** (terminal native, keyboard-centric)
 
-The architecture is fully Rust-powered, with no Python dependency. The frontend communicates with the backend via HTTP/JSON APIs.
+The agent core is Rust. The frontend talks to the Axum backend over HTTP/JSON. Computer Use starts a local Python helper under `runtime/` on first use.
 
 ### What it covers
 
@@ -430,7 +396,7 @@ The architecture is fully Rust-powered, with no Python dependency. The frontend 
 - Open a local workspace: browse file tree, search files, preview text/image inline
 - Git diff viewer with revert assistance
 - Remote SSH connection for file and command operations
-- **Four execution modes: Ask / Plan / Build / Review** — each with 100-turn long-task budget, streaming output, and auto-detection from input
+- **Four execution modes: Ask / Plan / Build / Review** — turn budgets are 70 / 100 / 70 / 50. Ask, Plan, and Review cannot mutate the workspace. `/work` is an alias of Build. The composer can pre-select a mode from the prompt text
 - Streaming agent logs toggle in chat toolbar
 - IME-aware Enter-to-send; Shift+Enter for newline; ArrowUp/Down command history
 - ACP multi-agent orchestration (Orchestrator + Specialist)
@@ -439,7 +405,6 @@ The architecture is fully Rust-powered, with no Python dependency. The frontend 
 - Persistent error memory with avoidance hints
 - Computer Use (screenshots + keyboard/mouse automation, CDP bridge)
 - Built-in provider profiles for 15+ LLM providers
-- **LLM Optimizer Pipeline**: HTTP/2 connection pool, SSE zero-copy parser, prefix-cache-aware prompt orchestration, FIM integration, entropy-based prompt compression, arena allocator
 - Electron desktop installer packaging for macOS (arm64 + x64)
 
 ### Quick start
@@ -500,7 +465,7 @@ Saved configurations from the UI are written to the user's local profile, not th
 
 ### Recent Updates (2026-05-10)
 
-- **Four-Mode Execution System** — Ask / Plan / Build / Review; all modes unified to 100-turn long-task budget
+- **Four-Mode Execution System** — Ask / Plan / Build / Review, with turn budgets 70 / 100 / 70 / 50. Only Build may change files or run commands
 - **Auto-Mode Detection** — keyword heuristics auto-select the best mode; manual override always wins
 - **Streaming Agent Logs** — Agent Logs checkbox in toolbar shows/hides reasoning traces and tool calls in the chat window
 - **IME-Aware Enter-to-Send** — `Enter` sends; `Shift+Enter` newline; Chinese/Japanese IME composition excluded
@@ -508,8 +473,6 @@ Saved configurations from the UI are written to the user's local profile, not th
 - **Red Stop Button** — immediately cancels all background agent work
 - **New Session Button** — opens a fresh zero-context session
 - **Workspace Directory Priority** — configured workspace dir is the strict primary CWD for all agent tool operations
-- **LLM Optimizer Pipeline (P0–P1 shipped)** — HTTP/2 pool, SSE zero-copy parser, prefix-cache-aware orchestration, FIM integration, entropy-based prompt compression, arena allocator
-
 ### Recent UI & Interaction Optimizations (2026-05-07)
 
 - **Apple Font System** — Font stack switched to native Apple typography (`-apple-system, 'SF Pro Text', 'SF Pro Display'`); all UI icons enlarged **2.5×**.
@@ -525,9 +488,7 @@ Saved configurations from the UI are written to the user's local profile, not th
 
 ### Electron Desktop Installer
 
-Installers for macOS are available in `ui/dist/`:
-- `Generic Coder-1.0.0-arm64-installer.pkg` — Apple Silicon
-- `Generic Coder-1.0.0-x64-installer.pkg` — Intel Mac
+Packaged macOS installers are published with GitHub Releases. The artifact version follows the latest git tag (or `GENERIC_CODER_APP_VERSION` when set), not a fixed `1.0.0` filename. `ui/package.json` currently records `1.1.2`.
 
 ### Development
 
@@ -547,7 +508,7 @@ src/
   acp.rs            ACP multi-agent collaboration
   oneshot.rs        One Shot autonomous brainstorm execution
   llm.rs            Model integration and streaming parser
-  workflow.rs       Ask/Plan/Build/Review execution modes (100-turn budget each)
+  workflow.rs       Ask/Plan/Build/Review (turn budgets 70/100/70/50; only Build mutates)
   error_memory.rs   Error memory with avoidance hints
   skills.rs         Skill registration and management
   tools.rs          Tool implementations (incl. Computer Use)
@@ -558,7 +519,7 @@ src/
   session_store.rs  Session persistence
   types.rs          Shared type definitions
   config.rs         Configuration loading and persistence
-tui/                Terminal TUI interface (~2060 lines Rust)
+tui/                Terminal TUI. F1 Build, F2 Plan, F3 Review
 ui/                 Electron desktop GUI app + scripts
   workbench/        Workbench TypeScript/React view
   dist/             Build artifacts and installers
@@ -568,7 +529,7 @@ assets/             Web frontend resources, images, demos
   tmwd_cdp_bridge/  CDP bridge extension for browser
 skills/             7 built-in skill modules
 memory/             Autonomous memory system (L1-L4)
-temp/optimizer/     LLM optimizer pipeline crate (HTTP/2, SSE zero-copy, prefix cache, FIM, compression)
+runtime/            Python helpers used by Computer Use
 ```
 
 ---
@@ -585,7 +546,7 @@ Generic Coder es un **puesto de control de desarrollo local con IA**, construido
 - **Electron Desktop** (shell nativo pulido con diseño Apple)
 - **TUI** (terminal nativa, centrada en teclado)
 
-Toda la arquitectura está implementada en Rust, sin dependencia de Python.
+El núcleo del agente está en Rust. Computer Use arranca un helper local de Python en `runtime/`.
 
 ### Capacidades incluidas
 
@@ -599,14 +560,13 @@ Toda la arquitectura está implementada en Rust, sin dependencia de Python.
 - revisión de cambios Git, vista previa de diff y ayudas de revert
 - operaciones remotas por SSH
 - subida de imágenes al contexto del chat
-- modos de ejecución **Ask / Plan / Build / Review** (100 turnos por modo, con detección automática)
+- modos **Ask / Plan / Build / Review** (límites de turno 70 / 100 / 70 / 50). Solo Build modifica archivos. `/work` es un alias de Build
 - logs de agente en streaming (toggle en toolbar)
 - Enter para enviar (IME-aware); Shift+Enter para nueva línea; historial de comandos con ArrowUp/Down
 - colaboración multi-agente ACP
 - modo autónomo One Shot
 - sistema de 7 skills y memoria persistente de errores
 - Computer Use para capturas e input del sistema + puente CDP
-- pipeline optimizador LLM (HTTP/2, SSE zero-copy, caché de prefijo, compresión de prompt)
 - instalador de escritorio Electron para macOS (arm64 + x64)
 - estadísticas de uso de tokens en tiempo real
 - recuperación de borrador con ArrowUp / ArrowDown
@@ -680,9 +640,7 @@ O inicia la aplicación de escritorio Electron.
 
 ### Instalador de Escritorio Electron
 
-Los instaladores para macOS están disponibles en `ui/dist/`:
-- `Generic Coder-1.0.0-arm64-installer.pkg` — Apple Silicon
-- `Generic Coder-1.0.0-x64-installer.pkg` — Intel Mac
+Los instaladores de macOS se publican en GitHub Releases. La versión del artefacto sigue la etiqueta git más reciente (o `GENERIC_CODER_APP_VERSION`), no un nombre fijo `1.0.0`. `ui/package.json` indica `1.1.2`.
 
 ### Desarrollo
 
@@ -702,7 +660,7 @@ src/
   acp.rs            Colaboración multi-agente ACP
   oneshot.rs        Ejecución autónoma con lluvia de ideas
   llm.rs            Integración de modelos y parser de streaming
-  workflow.rs       Pipeline de flujo (Ask/Plan/Build/Review, 100 turnos c/u)
+  workflow.rs       Ask/Plan/Build/Review (límites 70/100/70/50; solo Build modifica)
   error_memory.rs   Memoria de errores y sugerencias
   skills.rs         Registro y gestión de habilidades
   tools.rs          Implementación de herramientas (incl. Computer Use)
@@ -713,7 +671,7 @@ src/
   session_store.rs  Persistencia de sesiones
   types.rs          Definiciones de tipos compartidos
   config.rs         Carga y persistencia de configuración
-tui/                Interfaz de terminal TUI (~2060 líneas Rust)
+tui/                TUI de terminal. F1 Build, F2 Plan, F3 Review
 ui/                 App de escritorio Electron GUI + scripts
   workbench/        Vista Workbench TypeScript/React
   dist/             Artefactos de compilación e instaladores
@@ -723,7 +681,7 @@ assets/             Recursos del frontend web, imágenes, demos
   tmwd_cdp_bridge/  Extensión de puente CDP para navegador
 skills/             7 módulos de habilidades integradas
 memory/             Sistema de memoria autónoma (L1-L4)
-temp/optimizer/     Pipeline optimizador LLM (HTTP/2, SSE zero-copy, caché prefijo, compresión)
+runtime/            Helpers de Python usados por Computer Use
 ```
 
 ---

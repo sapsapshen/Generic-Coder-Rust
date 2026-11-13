@@ -86,11 +86,7 @@ pub fn draw(
     );
 
     // Right: mode | effort | yolo | key hints
-    let mode_hint = match app.current_mode {
-        generic_coder::workflow::AgentMode::Work => "Work",
-        generic_coder::workflow::AgentMode::Plan => "Plan",
-        generic_coder::workflow::AgentMode::Review => "Review",
-    };
+    let mode_hint = app.current_mode.label();
 
     let effort_hint = app
         .auto_route

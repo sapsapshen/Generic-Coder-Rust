@@ -615,6 +615,9 @@ export class WorkbenchService extends Disposable {
     try {
       const payload = await this.api.chat(prompt);
       if (payload.handled) {
+        if (payload.mode) {
+          this.stateValue.currentMode = payload.mode === 'work' ? 'build' : payload.mode;
+        }
         this.stateValue.messages = (payload.messages as ChatMessage[]) || this.stateValue.messages;
         this.stateValue.isRunning = false;
         await this.syncSessionState();

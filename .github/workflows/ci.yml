@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Test workspace
+        run: cargo test --workspace --locked

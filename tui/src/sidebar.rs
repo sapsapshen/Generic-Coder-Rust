@@ -60,7 +60,7 @@ pub fn draw(
     );
 
     // F1 Work
-    let work_style = if matches!(app.current_mode, generic_coder::workflow::AgentMode::Work) {
+    let work_style = if matches!(app.current_mode, generic_coder::workflow::AgentMode::Build) {
         Style::default()
             .fg(bg)
             .bg(accent)
@@ -69,7 +69,7 @@ pub fn draw(
         Style::default().fg(text)
     };
     let work_text = format!(
-        " F1 Work  {}",
+        " F1 Build {}",
         if app.multi_agent_enabled {
             "[MA]"
         } else if app.one_shot_enabled {
@@ -110,11 +110,7 @@ pub fn draw(
         ctx_chunks[0],
     );
 
-    let mode_label = match app.current_mode {
-        generic_coder::workflow::AgentMode::Work => "Work",
-        generic_coder::workflow::AgentMode::Plan => "Plan",
-        generic_coder::workflow::AgentMode::Review => "Review",
-    };
+    let mode_label = app.current_mode.label();
     let ctx_text = vec![
         Line::from(Span::styled(
             format!("  Mode:   {mode_label}"),
@@ -141,7 +137,7 @@ pub fn draw(
             Style::default().fg(text_dim),
         )),
         Line::from(Span::styled(
-            format!("  Turns:  {} max", mode_label_turns(app)),
+            format!("  Turns:  {} max", app.current_mode.max_turns()),
             Style::default().fg(text_dim),
         )),
     ];
@@ -266,10 +262,3 @@ pub fn draw(
     frame.render_widget(Paragraph::new(status_lines), sections[5]);
 }
 
-fn mode_label_turns(app: &App) -> &'static str {
-    match app.current_mode {
-        generic_coder::workflow::AgentMode::Work => "70",
-        generic_coder::workflow::AgentMode::Plan => "100",
-        generic_coder::workflow::AgentMode::Review => "50",
-    }
-}

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, RwLock,
@@ -21,6 +21,23 @@ use crate::types::{
     LlmConfig, LlmResponse, Message, MessageContent, StepOutcome, ToolCall, ToolSchema,
 };
 use crate::workflow::{AgentMode, Workflow};
+
+pub fn project_dir_from_agent_cwd(cwd: &Path) -> PathBuf {
+    if cwd.ends_with("temp") {
+        cwd.parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| cwd.to_path_buf())
+    } else {
+        cwd.to_path_buf()
+    }
+}
+
+pub fn current_agent_project_dir() -> PathBuf {
+    match default_agent_cwd() {
+        Ok(cwd) => project_dir_from_agent_cwd(&cwd),
+        Err(_) => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    }
+}
 
 fn default_agent_cwd() -> Result<PathBuf> {
     let root = std::env::var("GENERIC_CODER_PROJECT_DIR")
@@ -259,16 +276,18 @@ struct NativeClaudeClientSession {
 
 fn mode_emoji(mode: AgentMode) -> &'static str {
     match mode {
-        AgentMode::Work => "⚡",
+        AgentMode::Ask => "💬",
         AgentMode::Plan => "📋",
+        AgentMode::Build => "⚡",
         AgentMode::Review => "🔍",
     }
 }
 
 fn mode_str(mode: AgentMode) -> &'static str {
     match mode {
-        AgentMode::Work => "WORK",
+        AgentMode::Ask => "ASK",
         AgentMode::Plan => "PLAN",
+        AgentMode::Build => "BUILD",
         AgentMode::Review => "REVIEW",
     }
 }
@@ -412,7 +431,7 @@ impl GenericAgent {
             stop_sig: Arc::new(AtomicBool::new(false)),
             is_running: Arc::new(AtomicBool::new(false)),
             verbose: true,
-            agent_mode: RwLock::new(AgentMode::Work),
+            agent_mode: RwLock::new(AgentMode::Build),
             agent_workflow: RwLock::new(Workflow::default()),
             multi_agent_enabled: RwLock::new(false),
             one_shot_enabled: RwLock::new(false),
@@ -605,7 +624,7 @@ impl GenericAgent {
             .count() as i32;
 
         let mode = *self.agent_mode.read().unwrap();
-        if !matches!(mode, AgentMode::Work) {
+        if matches!(mode, AgentMode::Plan | AgentMode::Review) {
             score += 2;
         }
         if self.is_multi_agent() || self.is_one_shot() || self.is_yolo() {
@@ -774,7 +793,7 @@ impl GenericAgent {
         self.is_running.load(Ordering::SeqCst)
     }
 
-    /// Set the current agent mode (work/plan/review)
+    /// Set the current agent mode (ask/plan/build/review).
     pub fn set_mode(&self, mode: AgentMode) {
         *self.agent_mode.write().unwrap() = mode;
         // Also update current handler if exists
@@ -988,6 +1007,15 @@ impl GenericAgent {
                 }))
                 .await;
         }
+
+        // Re-read error memory per task so /clear and newly recorded failures
+        // apply without restarting the process.
+        let avoidance = handler.read().unwrap().error_memory.avoidance_summary();
+        let sys_prompt = if avoidance.is_empty() {
+            sys_prompt
+        } else {
+            format!("{sys_prompt}\n{avoidance}")
+        };
 
         // YOLO mode: inject auto-approve note into system prompt
         let sys_prompt = if *self.yolo_enabled.read().unwrap() {
@@ -1273,12 +1301,7 @@ pub struct AgentHandler {
 
 impl AgentHandler {
     pub fn new(cwd: PathBuf) -> Self {
-        // Derive project_dir from cwd: cwd is usually ./temp, so go up one level
-        let project_dir = if cwd.ends_with("temp") {
-            cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd.clone())
-        } else {
-            cwd.clone()
-        };
+        let project_dir = project_dir_from_agent_cwd(&cwd);
         Self {
             working: RwLock::new(HashMap::new()),
             current_turn: RwLock::new(0),
@@ -1289,7 +1312,7 @@ impl AgentHandler {
             cwd,
             error_memory: ErrorMemory::new(&project_dir),
             model_name: RwLock::new(String::new()),
-            mode: RwLock::new(AgentMode::Work),
+            mode: RwLock::new(AgentMode::Build),
             workflow: RwLock::new(Workflow::default()),
         }
     }
@@ -1310,6 +1333,24 @@ impl AgentHandler {
 
     pub fn dispatch(&self, tool_name: &str, args: Value, response_content: &str) -> StepOutcome {
         let (tool_name, args) = canonicalize_tool_invocation(tool_name, &args);
+        let mode = *self.mode.read().unwrap();
+        if !mode.allows_mutation() && crate::workflow::tool_mutates(&tool_name) {
+            let msg = format!(
+                "{tool_name} is disabled in {} mode. Switch to Build to modify files or run commands.",
+                mode.as_str()
+            );
+            self.record_error(
+                &tool_name,
+                &msg,
+                ErrorSeverity::Validation,
+                serde_json::json!({"mode": mode.as_str()}),
+            );
+            return StepOutcome {
+                data: serde_json::json!({"error": msg}),
+                next_prompt: Some(msg),
+                should_exit: false,
+            };
+        }
         match tool_name.as_str() {
             "code_run" => self.do_code_run(&args),
             "run_tests" => self.do_run_tests(&args),
@@ -3395,6 +3436,50 @@ mod tests {
         assert!(!test_root.join("ANALYSIS.md").exists());
 
         let _ = fs::remove_dir_all(&test_root);
+    }
+
+    #[test]
+    fn dispatch_blocks_writes_outside_build_mode() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let test_root = std::env::temp_dir().join(format!("generic-coder-ask-mode-{unique}"));
+        fs::create_dir_all(&test_root).unwrap();
+
+        let handler = AgentHandler::new(test_root.clone());
+        *handler.mode.write().unwrap() = crate::workflow::AgentMode::Ask;
+        let outcome = handler.dispatch(
+            "file_write",
+            json!({ "path": "notes.txt", "content": "should not land" }),
+            "",
+        );
+
+        let error = outcome
+            .data
+            .get("error")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        assert!(error.contains("disabled in ask mode"), "{error}");
+        assert!(!test_root.join("notes.txt").exists());
+
+        let _ = fs::remove_dir_all(&test_root);
+    }
+
+    #[test]
+    fn error_memory_root_follows_the_agent_workspace() {
+        let root = std::path::PathBuf::from("/work/repo");
+        assert_eq!(project_dir_from_agent_cwd(&root.join("temp")), root);
+        assert_eq!(project_dir_from_agent_cwd(&root), root);
+
+        let cwd = super::default_agent_cwd().unwrap();
+        let handler = AgentHandler::new(cwd.clone());
+        let expected = crate::error_memory::ErrorMemory::new(&super::current_agent_project_dir());
+        assert_eq!(handler.error_memory.store_path, expected.store_path);
+        assert_eq!(
+            handler.error_memory.store_path,
+            crate::error_memory::ErrorMemory::new(&project_dir_from_agent_cwd(&cwd)).store_path
+        );
     }
 
     #[test]
